@@ -1,0 +1,6 @@
+{
+  "name": "LuxeBite Restaurant Platform",
+  "description": "Premium restaurant ecommerce platform with modular SaaS admin analytics dashboard, online cart, table reservations, and live PostgreSQL schema browser.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

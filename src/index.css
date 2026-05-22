@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fira+Code:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "Fira Code", monospace;
+
+  /* Refined Gold and Orange shades for that luxurious, high-end feel */
+  --color-gold-50: #fdfbf7;
+  --color-gold-100: #fbf7ed;
+  --color-gold-200: #f5ebd3;
+  --color-gold-300: #ecd7a9;
+  --color-gold-400: #dfbe7c;
+  --color-gold-500: #C5A059; /* Custom Brand Gold from Design HTML */
+  --color-gold-600: #b4853a;
+  --color-gold-700: #96672c;
+  --color-gold-800: #7b5125;
+  --color-gold-900: #64401f;
+  
+  --color-brand-orange: #F27D26; /* Custom Brand Orange from Design HTML */
+  --color-brand-gold: #C5A059;
+  
+  --color-luxury-950: #050505; /* Deep pure black background from Design HTML */
+  --color-luxury-900: #0c0c0c; 
+  --color-luxury-800: #151515; 
+  --color-luxury-700: #222222;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-luxury-950);
+    color: rgba(255, 255, 255, 0.85);
+    font-family: var(--font-sans);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+}
+
+/* HIGH-FIDELITY, GORGEOUS AND ROYAL LIGHT MODE OVERLAYS */
+body.light-mode {
+  background-color: #faf8f5 !important;
+  color: #1a1612 !important;
+}
+
+body.light-mode .text-white {
+  color: #1a1612 !important;
+}
+
+body.light-mode .text-white\/40 {
+  color: rgba(26, 22, 18, 0.4) !important;
+}
+
+body.light-mode .text-white\/60 {
+  color: rgba(26, 22, 18, 0.7) !important;
+}
+
+body.light-mode .text-white\/80 {
+  color: rgba(26, 22, 18, 0.85) !important;
+}
+
+body.light-mode .text-white\/90 {
+  color: rgba(26, 22, 18, 0.9) !important;
+}
+
+body.light-mode .bg-\[\#050505\] {
+  background-color: #faf8f5 !important;
+}
+
+body.light-mode .bg-\[\#050505\]\/95 {
+  background-color: rgba(250, 248, 245, 0.95) !important;
+}
+
+body.light-mode .bg-\[\#0c0c0c\] {
+  background-color: #ffffff !important;
+}
+
+body.light-mode .bg-luxury-900 {
+  background-color: #ffffff !important;
+}
+
+body.light-mode .bg-luxury-950 {
+  background-color: #faf8f5 !important;
+}
+
+body.light-mode .bg-luxury-800 {
+  background-color: #f3f0ec !important;
+}
+
+body.light-mode .border-white\/10 {
+  border-color: rgba(26, 22, 18, 0.08) !important;
+}
+
+body.light-mode .border-white\/5 {
+  border-color: rgba(26, 22, 18, 0.05) !important;
+}
+
+body.light-mode .border-gold-900\/30 {
+  border-color: rgba(197, 160, 89, 0.25) !important;
+}
+
+body.light-mode .border-gold-900\/40 {
+  border-color: rgba(197, 160, 89, 0.35) !important;
+}
+
+body.light-mode .text-\[\#C5A059\] {
+  color: #a47b35 !important;
+}
+
+body.light-mode .text-gold-200 {
+  color: #8c6526 !important;
+}
+
+body.light-mode .text-gold-300 {
+  color: #7d591f !important;
+}
+
+body.light-mode .text-gold-400 {
+  color: #644410 !important;
+}
+
+body.light-mode .bg-white\/5 {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+body.light-mode .bg-white\/10 {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+body.light-mode .text-[#C5A059] {
+  color: #a47b35 !important;
+}
+
+body.light-mode .text-zinc-300 {
+  color: #332d27 !important;
+}
+
+body.light-mode .text-zinc-400 {
+  color: #554e47 !important;
+}
+
+body.light-mode .text-zinc-500 {
+  color: #777068 !important;
+}
+
+body.light-mode .bg-luxury-950\/50 {
+  background-color: rgba(250, 248, 245, 0.5) !important;
+}
+
+body.light-mode .shadow-2xl {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06) !important;
+}
+
+body.light-mode ::-webkit-scrollbar-track {
+  background: #faf8f5;
+}
+
+/* Custom gorgeous animations and custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+::-webkit-scrollbar-thumb {
+  background: #F27D26;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C5A059;
+}
+

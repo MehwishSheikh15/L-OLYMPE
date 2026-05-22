@@ -1,0 +1,666 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  User, Product, Category, CartItem, PromoCode, Order, 
+  Reservation, GalleryItem, StoreSettings, SystemNotif 
+} from '../types';
+
+interface AppContextType {
+  currentUser: User | null;
+  users: User[];
+  products: Product[];
+  categories: Category[];
+  cart: CartItem[];
+  wishlist: string[];
+  orders: Order[];
+  reservations: Reservation[];
+  promoCodes: PromoCode[];
+  gallery: GalleryItem[];
+  settings: StoreSettings;
+  notifications: SystemNotif[];
+  isLightTheme: boolean;
+  
+  // Auth Functions
+  login: (email: string, role: 'admin' | 'customer', password?: string) => boolean;
+  logout: () => void;
+  registerCustomer: (name: string, email: string, phone: string, address: string) => void;
+  toggleTheme: () => void;
+  
+  // Store Functions
+  addProduct: (product: Omit<Product, 'id' | 'rating' | 'ratingCount'>) => void;
+  updateProduct: (id: string, product: Partial<Product>) => void;
+  deleteProduct: (id: string) => void;
+  
+  // Category Functions
+  addCategory: (category: Omit<Category, 'id' | 'slug'>) => void;
+  deleteCategory: (id: string) => void;
+  
+  // Ecommerce Functions
+  addToCart: (product: Product, quantity?: number) => void;
+  removeFromCart: (productId: string) => void;
+  updateCartQuantity: (productId: string, quantity: number) => void;
+  clearCart: () => void;
+  toggleWishlist: (productId: string) => void;
+  applyPromoCode: (code: string) => PromoCode | null;
+  activePromoCode: PromoCode | null;
+  placeOrder: (details: { address: string; phone: string; paymentMethod: string }) => Promise<Order | null>;
+  updateOrderStatus: (orderId: string, status: Order['status']) => void;
+  
+  // Reservation Functions
+  bookTable: (details: { userName: string; userEmail: string; phone: string; date: string; time: string; partySize: number; area: Reservation['area']; notes?: string }) => Promise<Reservation>;
+  updateReservationStatus: (id: string, status: Reservation['status']) => void;
+  
+  // Settings & Banner Functions
+  updateSettings: (settings: Partial<StoreSettings>) => void;
+  addGalleryItem: (item: Omit<GalleryItem, 'id'>) => void;
+  deleteGalleryItem: (id: string) => void;
+  
+  // System Alert Hooks
+  pushNotification: (type: SystemNotif['type'], message: string) => void;
+  markNotificationsAsRead: () => void;
+  clearNotifications: () => void;
+}
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+const defaultPromoCodes: PromoCode[] = [
+  { code: 'ROYAL20', discountPercent: 20, description: 'Exclusive 20% discount on reservations over $150', minOrderValue: 150 },
+  { code: 'GOLDENBITE', discountPercent: 15, description: '15% savings across our signature selection', minOrderValue: 50 },
+  { code: 'FIRSTLUXE', discountPercent: 10, description: 'Welcome 10% discount for first-time epicurean clients', minOrderValue: 0 }
+];
+
+const defaultGallery: GalleryItem[] = [
+  { id: 'gal-1', title: 'A5 Miyazaki Wagyu Sizzle Technique', category: 'actions', imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80' },
+  { id: 'gal-2', title: 'The Gilded Salon Dining Room', category: 'ambiance', imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80' },
+  { id: 'gal-3', title: 'Caviar Pearl Spoon Presentation', category: 'dishes', imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80' },
+  { id: 'gal-4', title: 'Our Private Candlelit Wine Cellar', category: 'ambiance', imageUrl: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=800&q=80' },
+  { id: 'gal-5', title: 'Pouring Valrhona Gold Chocolate Sauce', category: 'actions', imageUrl: 'https://images.unsplash.com/photo-1579372786545-d24232daf58c?auto=format&fit=crop&w=800&q=80' },
+  { id: 'gal-6', title: 'Plating the Blue Brittany Lobster', category: 'dishes', imageUrl: 'https://images.unsplash.com/photo-1534080391025-a77c7ec4403e?auto=format&fit=crop&w=800&q=80' }
+];
+
+const preloadedUsers: User[] = [
+  { id: 'admin-mehwish', name: 'Mehwish', email: 'mehwishsheikh451sheikh@gmail.com', role: 'admin', phone: '+33 605 929 111', joinedDate: '2026-05-22', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80' },
+  { id: 'user-cust-1', name: 'Baroness Charlotte DuPont', email: 'charlotte@luxe.com', role: 'customer', phone: '+33 602 444 888', joinedDate: '2025-05-10', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&h=150&q=80' },
+  { id: 'user-cust-2', name: 'Sir Alexander Sterling', email: 'alex@sterling.com', role: 'customer', phone: '+1 (310) 555-0192', joinedDate: '2026-02-18', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80' }
+];
+
+const defaultNotifs: SystemNotif[] = [
+  { id: 'not-1', type: 'info', message: 'Michelin Star renewal verified on Paris gastronome register.', timestamp: '14:32', read: false },
+  { id: 'not-2', type: 'success', message: 'New ultra-exclusive VIP table booking: Princess Alexandra of Monaco.', timestamp: '08:05', read: false },
+  { id: 'not-3', type: 'warning', message: 'Product inventory alerts: Piedmont Truffle Pasta reached low stock.', timestamp: '2026-05-21', read: true }
+];
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Try loading states from LocalStorage or fallback
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('luxebite_session');
+    if (saved) return JSON.parse(saved);
+    return preloadedUsers[1]; // Logged in as Charlotte DuPont customer by default
+  });
+
+  const [users, setUsers] = useState<User[]>(() => {
+    const saved = localStorage.getItem('luxebite_users');
+    return saved ? JSON.parse(saved) : preloadedUsers;
+  });
+
+  // Server-synced states
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [settings, setSettings] = useState<StoreSettings>({
+    restaurantName: 'L’Olympe Paris',
+    logoUrl: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=200&h=200&q=80',
+    contactPhone: '+33 (1) 40 55 90 90',
+    contactEmail: 'concierge@lolympe-paris.com',
+    address: 'Place de la Concorde, 75008 Paris, France',
+    heroTitle: 'Culinary Masterpieces Crafting Legendary Legacies',
+    heroSubtitle: 'Step into an exquisite sanctuary of sensory wonders, crafted with A5 Wagyu, golden caviar spoonfuls, and autumn Piedmont truffles.',
+    heroImageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=80',
+    aboutNarrative: `Founded by three-starred Michelin legend Chef Alain Gauthier, L'Olympe Paris is a sacred union of contemporary chemistry and classic French culinary heritage. Named after the home of gods, our dining chamber offers grand gold glassmorphism arches, an ancient stone wine repository holding 14,000 vintage bottles, and a personalized tableside fire culinary theatre. Every dish is crafted as an oil painting, engineered for those who seek high-art gastronomy.`,
+    bannerText: '✦ MICHELIN STARS 2026: L’OLYMPE RETAINS ITS HISTORIC THREE STAR DISTINCTION ✦',
+    seoKeywords: 'Michelin Star Paris, Luxury Fine Dining Paris, A5 Wagyu Caviar Bordeaux, Private Chef Table, Concorde French Restaurant'
+  });
+
+  // Client-only states
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    const saved = localStorage.getItem('luxebite_cart');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [wishlist, setWishlist] = useState<string[]>(() => {
+    const saved = localStorage.getItem('luxebite_wishlist');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [promoCodes] = useState<PromoCode[]>(defaultPromoCodes);
+  const [gallery, setGallery] = useState<GalleryItem[]>(() => {
+    const saved = localStorage.getItem('luxebite_gallery');
+    return saved ? JSON.parse(saved) : defaultGallery;
+  });
+
+  const [notifications, setNotifications] = useState<SystemNotif[]>(() => {
+    const saved = localStorage.getItem('luxebite_notifications');
+    return saved ? JSON.parse(saved) : defaultNotifs;
+  });
+
+  const [activePromoCode, setActivePromoCode] = useState<PromoCode | null>(null);
+
+  // Light theme support
+  const [isLightTheme, setIsLightTheme] = useState<boolean>(() => {
+    const savedTheme = localStorage.getItem('luxebite_theme');
+    return savedTheme === 'light';
+  });
+
+  // Core state loader from server
+  const fetchServerState = async () => {
+    try {
+      const response = await fetch('/api/state');
+      if (response.ok) {
+        const data = await response.json();
+        setProducts(data.products || []);
+        setCategories(data.categories || []);
+        setOrders(data.orders || []);
+        setReservations(data.reservations || []);
+        setSettings(data.settings || {});
+      }
+    } catch (err) {
+      console.error("Failed to fetch state from backend:", err);
+    }
+  };
+
+  // Connect native Server-Sent Events stream for realtime synchronization
+  useEffect(() => {
+    fetchServerState();
+
+    const eventSource = new EventSource('/api/events');
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'state-update') {
+          fetchServerState();
+        }
+      } catch (err) {
+        console.error("Failed to parse event stream data:", err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.log("SSE event stream reconnecting...", err);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, []);
+
+  // Set up theme class on body element
+  useEffect(() => {
+    if (isLightTheme) {
+      document.body.classList.add('light-mode');
+    } else {
+      document.body.classList.remove('light-mode');
+    }
+    localStorage.setItem('luxebite_theme', isLightTheme ? 'light' : 'dark');
+  }, [isLightTheme]);
+
+  const toggleTheme = () => {
+    setIsLightTheme(prev => !prev);
+  };
+
+  // Sync client-side states to localStorage
+  useEffect(() => {
+    localStorage.setItem('luxebite_session', JSON.stringify(currentUser));
+  }, [currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem('luxebite_users', JSON.stringify(users));
+  }, [users]);
+
+  useEffect(() => {
+    localStorage.setItem('luxebite_cart', JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
+    localStorage.setItem('luxebite_wishlist', JSON.stringify(wishlist));
+  }, [wishlist]);
+
+  useEffect(() => {
+    localStorage.setItem('luxebite_gallery', JSON.stringify(gallery));
+  }, [gallery]);
+
+  useEffect(() => {
+    localStorage.setItem('luxebite_notifications', JSON.stringify(notifications));
+  }, [notifications]);
+
+  // Authenticate System
+  const login = (email: string, role: 'admin' | 'customer', password?: string): boolean => {
+    const formattedEmail = email.trim().toLowerCase();
+    
+    // Check specific credentials requested by user
+    if (formattedEmail === 'mehwishsheikh451sheikh@gmail.com') {
+      if (password === 'Mehwish.-15') {
+        const adminUser: User = {
+          id: 'admin-mehwish',
+          name: 'Mehwish',
+          email: formattedEmail,
+          role: 'admin',
+          phone: '+33 605 929 111',
+          joinedDate: new Date().toISOString().split('T')[0],
+          avatar: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=150&h=150&q=80'
+        };
+        setUsers(prev => prev.some(u => u.email.toLowerCase() === formattedEmail) ? prev : [...prev, adminUser]);
+        setCurrentUser(adminUser);
+        fetchServerState();
+        pushNotification('success', `Welcome Grand Chef Mehwish! Secured admin access verified.`);
+        return true;
+      } else {
+        pushNotification('warning', `Access Denied: Incorrect credentials for Chef Mehwish.`);
+        return false;
+      }
+    }
+
+    // Otherwise standard Customer log-in
+    if (role === 'admin') {
+      pushNotification('warning', `Access Denied: Unrecognized administrator email.`);
+      return false;
+    }
+
+    // Customer Login
+    const existing = users.find(u => u.email.toLowerCase() === formattedEmail && u.role === 'customer');
+    if (existing) {
+      setCurrentUser(existing);
+      fetchServerState();
+      pushNotification('success', `Welcome back, ${existing.name}! Logged in as VIP Client.`);
+      return true;
+    }
+
+    // Fast-create beautiful guest profile for other emails
+    const name = email.split('@')[0].toUpperCase();
+    const newUser: User = {
+      id: 'user-' + Date.now(),
+      name,
+      email: formattedEmail,
+      role: 'customer',
+      phone: '+33 600 000 000',
+      joinedDate: new Date().toISOString().split('T')[0],
+      avatar: `https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&h=150&q=80`
+    };
+    setUsers(prev => [...prev, newUser]);
+    setCurrentUser(newUser);
+    fetchServerState();
+    pushNotification('success', `Created direct VIP profile: Welcome ${newUser.name}`);
+    return true;
+  };
+
+  const logout = () => {
+    setCurrentUser(null);
+    setActivePromoCode(null);
+    fetchServerState();
+    pushNotification('info', 'Securely logged out. Private sessions closed.');
+  };
+
+  const registerCustomer = (name: string, email: string, phone: string, address: string) => {
+    const formattedEmail = email.trim().toLowerCase();
+    
+    // Prevent registering admin email as standard customer
+    if (formattedEmail === 'mehwishsheikh451sheikh@gmail.com') {
+      pushNotification('warning', 'Admin email domain restricted. Please utilize admin login portal.');
+      return;
+    }
+
+    const newUser: User = {
+      id: 'user-' + Date.now(),
+      name,
+      email: formattedEmail,
+      role: 'customer',
+      phone,
+      address,
+      joinedDate: new Date().toISOString().split('T')[0],
+      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&h=150&q=80'
+    };
+    setUsers(prev => [...prev, newUser]);
+    setCurrentUser(newUser);
+    fetchServerState();
+    pushNotification('success', `Gilded profile provisioned! Welcome, ${name}.`);
+  };
+
+  // Product mutations via REST API
+  const addProduct = async (product: Omit<Product, 'id' | 'rating' | 'ratingCount'>) => {
+    const newProduct = {
+      ...product,
+      id: 'prod-' + Date.now(),
+      rating: 5.0,
+      ratingCount: 1
+    };
+    try {
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct)
+      });
+      if (response.ok) {
+        pushNotification('success', `Menu Expansion: "${newProduct.name}" deployed to public database.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const updateProduct = async (id: string, updated: Partial<Product>) => {
+    try {
+      const response = await fetch(`/api/products/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      if (response.ok) {
+        pushNotification('info', `Menu details refreshed for ID ${id}.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const deleteProduct = async (id: string) => {
+    try {
+      const response = await fetch(`/api/products/${id}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        pushNotification('warning', `Removed product ID ${id} from public display.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Category mutations via REST API
+  const addCategory = async (category: Omit<Category, 'id' | 'slug'>) => {
+    const newCategory: Category = {
+      ...category,
+      id: 'cat-' + Date.now(),
+      slug: category.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    };
+    try {
+      const response = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCategory)
+      });
+      if (response.ok) {
+        pushNotification('success', `Established menu division: "${newCategory.name}".`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const deleteCategory = async (id: string) => {
+    try {
+      const response = await fetch(`/api/categories/${id}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        pushNotification('warning', `Abolished category section ID ${id}.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Ecommerce Core Operations
+  const addToCart = (product: Product, quantity: number = 1) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.product.id === product.id);
+      if (existing) {
+        return prev.map(item => 
+          item.product.id === product.id 
+            ? { ...item, quantity: item.quantity + quantity } 
+            : item
+        );
+      }
+      return [...prev, { product, quantity }];
+    });
+    pushNotification('success', `Added to collection: ${quantity}x ${product.name}`);
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart(prev => prev.filter(item => item.product.id !== productId));
+  };
+
+  const updateCartQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+    setCart(prev => prev.map(item => 
+      item.product.id === productId ? { ...item, quantity } : item
+    ));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  const toggleWishlist = (productId: string) => {
+    setWishlist(prev => {
+      if (prev.includes(productId)) {
+        pushNotification('info', 'Removed product from private wishlist.');
+        return prev.filter(id => id !== productId);
+      } else {
+        pushNotification('success', 'Affixed product to private wishlist.');
+        return [...prev, productId];
+      }
+    });
+  };
+
+  const applyPromoCode = (code: string): PromoCode | null => {
+    const matched = promoCodes.find(p => p.code.toUpperCase() === code.toUpperCase());
+    if (matched) {
+      setActivePromoCode(matched);
+      pushNotification('success', `Coupon Authenticated! ${matched.discountPercent}% luxury deduction unlocked.`);
+      return matched;
+    }
+    pushNotification('warning', 'Invalid or expired promo code.');
+    return null;
+  };
+
+  // Order Placement (Server-Synced)
+  const placeOrder = async (details: { address: string; phone: string; paymentMethod: string }): Promise<Order | null> => {
+    if (cart.length === 0) return null;
+
+    const subtotal = cart.reduce((acc, curr) => acc + (curr.product.price * curr.quantity), 0);
+    const discountAmount = activePromoCode && subtotal >= activePromoCode.minOrderValue
+      ? Math.round(subtotal * (activePromoCode.discountPercent / 100))
+      : 0;
+      
+    const tax = Math.round((subtotal - discountAmount) * 0.08 * 10) / 10;
+    const deliveryFee = 15;
+    const total = subtotal - discountAmount + tax + deliveryFee;
+
+    const newOrder: Order = {
+      id: 'ord-' + (1000 + orders.length + 1),
+      userId: currentUser?.id || 'guest',
+      userName: currentUser?.name || 'Guest Chef',
+      userEmail: currentUser?.email || 'guest@dining.com',
+      items: cart.map(item => ({
+        productId: item.product.id,
+        productName: item.product.name,
+        price: item.product.price,
+        quantity: item.quantity,
+        image: item.product.image
+      })),
+      subtotal,
+      discountAmount,
+      tax,
+      deliveryFee,
+      total,
+      status: 'pending',
+      address: details.address,
+      phone: details.phone,
+      paymentMethod: details.paymentMethod,
+      promoCodeUsed: activePromoCode?.code,
+      trackingNumber: 'TRK-' + Math.floor(10000000 + Math.random() * 90000000),
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newOrder)
+      });
+      if (response.ok) {
+        setCart([]);
+        setActivePromoCode(null);
+        pushNotification('success', `Checkout Complete! Order ${newOrder.id} dispatched live to L'Olympe master kitchen.`);
+        return newOrder;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    return null;
+  };
+
+  const updateOrderStatus = async (orderId: string, status: Order['status']) => {
+    try {
+      const response = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (response.ok) {
+        pushNotification('info', `Order ${orderId} status updated to: ${status.toUpperCase()}`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Table Reservations (Server-Synced)
+  const bookTable = async (details: { 
+    userName: string; userEmail: string; phone: string; 
+    date: string; time: string; partySize: number; 
+    area: Reservation['area']; notes?: string 
+  }): Promise<Reservation> => {
+    const newRes: Reservation = {
+      id: 'res-' + (reservations.length + 1),
+      userId: currentUser?.id || 'guest',
+      userName: details.userName,
+      userEmail: details.userEmail,
+      phone: details.phone,
+      date: details.date,
+      time: details.time,
+      partySize: details.partySize,
+      area: details.area,
+      notes: details.notes,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRes)
+      });
+      if (response.ok) {
+        pushNotification('success', `Reservation Registered: ${details.date} • ${details.time} in ${details.area}. Please await elite review.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+
+    return newRes;
+  };
+
+  const updateReservationStatus = async (id: string, status: Reservation['status']) => {
+    try {
+      const response = await fetch(`/api/reservations/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (response.ok) {
+        pushNotification('success', `Reservation ID ${id} set to: ${status.toUpperCase()}.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Settings & Media Banners
+  const updateSettings = async (updated: Partial<StoreSettings>) => {
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      if (response.ok) {
+        pushNotification('success', `Gilded values successfully updated.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Gallery CRUD
+  const addGalleryItem = (item: Omit<GalleryItem, 'id'>) => {
+    const newItem: GalleryItem = {
+      ...item,
+      id: 'gal-' + Date.now()
+    };
+    setGallery(prev => [...prev, newItem]);
+    pushNotification('success', 'Gallery expanded with a new frame reference.');
+  };
+
+  const deleteGalleryItem = (id: string) => {
+    setGallery(prev => prev.filter(g => g.id !== id));
+    pushNotification('warning', `Purged image frame ID ${id} from live media repository.`);
+  };
+
+  // Notification utilities
+  const pushNotification = (type: SystemNotif['type'], message: string) => {
+    const newNotif: SystemNotif = {
+      id: 'not-' + Date.now(),
+      type,
+      message,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      read: false
+    };
+    setNotifications(prev => [newNotif, ...prev].slice(0, 20));
+  };
+
+  const markNotificationsAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  const clearNotifications = () => {
+    setNotifications([]);
+  };
+
+  return (
+    <AppContext.Provider value={{
+      currentUser, users, products, categories, cart, wishlist, orders, reservations, promoCodes, gallery, settings, notifications, isLightTheme,
+      login, logout, registerCustomer, toggleTheme,
+      addProduct, updateProduct, deleteProduct,
+      addCategory, deleteCategory,
+      addToCart, removeFromCart, updateCartQuantity, clearCart, toggleWishlist, applyPromoCode, activePromoCode, placeOrder, updateOrderStatus,
+      bookTable, updateReservationStatus,
+      updateSettings, addGalleryItem, deleteGalleryItem,
+      pushNotification, markNotificationsAsRead, clearNotifications
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (context === undefined) {
+    throw new Error('useApp must be utilized within an AppProvider wrapper');
+  }
+  return context;
+};
