@@ -6,9 +6,10 @@ import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 const PORT = 3000;
-const STORE_PATH = path.join(process.cwd(), "data_store.json");
+const STORE_PATH = process.env.DATA_STORE_PATH || path.join(process.cwd(), "data_store.json");
 
-app.use(express.json());
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
 // In-Memory state store
 let state = {
@@ -192,6 +193,10 @@ function loadState() {
 
 function saveState() {
   try {
+    const dir = path.dirname(STORE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(STORE_PATH, JSON.stringify(state, null, 2), "utf8");
   } catch (err) {
     console.error("Error saving state:", err);

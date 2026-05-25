@@ -168,29 +168,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Connect native Server-Sent Events stream for realtime synchronization
+  // Keep state synchronized with periodic polling (safe, compatible, no connection pool starvation)
   useEffect(() => {
     fetchServerState();
 
-    const eventSource = new EventSource('/api/events');
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'state-update') {
-          fetchServerState();
-        }
-      } catch (err) {
-        console.error("Failed to parse event stream data:", err);
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      console.log("SSE event stream reconnecting...", err);
-    };
+    const intervalId = setInterval(() => {
+      fetchServerState();
+    }, 15000); // Poll once every 15 seconds
 
     return () => {
-      eventSource.close();
+      clearInterval(intervalId);
     };
   }, []);
 
@@ -341,6 +328,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('success', `Menu Expansion: "${newProduct.name}" deployed to public database.`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
@@ -356,6 +344,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('info', `Menu details refreshed for ID ${id}.`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
@@ -369,6 +358,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('warning', `Removed product ID ${id} from public display.`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
@@ -390,6 +380,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('success', `Established menu division: "${newCategory.name}".`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
@@ -403,6 +394,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('warning', `Abolished category section ID ${id}.`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
@@ -515,6 +507,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCart([]);
         setActivePromoCode(null);
         pushNotification('success', `Checkout Complete! Order ${newOrder.id} dispatched live to L'Olympe master kitchen.`);
+        fetchServerState();
         return newOrder;
       }
     } catch (err) {
@@ -532,6 +525,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('info', `Order ${orderId} status updated to: ${status.toUpperCase()}`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
@@ -567,6 +561,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('success', `Reservation Registered: ${details.date} • ${details.time} in ${details.area}. Please await elite review.`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
@@ -584,6 +579,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('success', `Reservation ID ${id} set to: ${status.toUpperCase()}.`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
@@ -600,6 +596,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (response.ok) {
         pushNotification('success', `Gilded values successfully updated.`);
+        fetchServerState();
       }
     } catch (err) {
       console.error(err);
