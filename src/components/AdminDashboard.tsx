@@ -54,6 +54,21 @@ export const AdminDashboard: React.FC = () => {
   const [newCatName, setNewCatName] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
 
+  // Sanity Connection Status State
+  const [sanityStatus, setSanityStatus] = useState<{
+    configured: boolean;
+    projectId: string | null;
+    dataset: string;
+    apiVersion: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    fetch('/api/sanity-status')
+      .then(res => res.json())
+      .then(data => setSanityStatus(data))
+      .catch(err => console.error("Error fetching Sanity status:", err));
+  }, []);
+
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
     updateSettings({
@@ -994,7 +1009,8 @@ export const AdminDashboard: React.FC = () => {
 
           {/* PANEL 7: BRAND CMS LIVE CUSTOMIZER (EDIT HEADING LIVE!) */}
           {activeTab === 'settings' && (
-            <form onSubmit={handleSaveSettings} className="p-6 rounded-2xl border border-gold-500/15 bg-[#12100e] space-y-6 text-xs text-zinc-100">
+            <>
+              <form onSubmit={handleSaveSettings} className="p-6 rounded-2xl border border-gold-500/15 bg-[#12100e] space-y-6 text-xs text-zinc-100">
               
               <div className="flex justify-between items-center border-b border-gold-900/15 pb-4 mb-2">
                 <div>
@@ -1103,7 +1119,79 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
             </form>
-          )}
+
+            {/* Sanity database status panel */}
+            <div className="mt-8 p-6 rounded-2xl border border-gold-500/15 bg-[#12100e] text-xs text-zinc-100 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-gold-900/15 pb-4 gap-3">
+                <div>
+                  <h3 className="font-serif text-base font-bold uppercase tracking-wider flex items-center gap-2">
+                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${sanityStatus?.configured ? 'bg-green-500 animate-pulse' : 'bg-amber-500 animate-pulse'}`}></span>
+                    Sanity.io Cloud Database Integration
+                  </h3>
+                  <p className="text-[10px] text-zinc-500 mt-1">
+                    Store and edit your michelin restaurant menu items, order flows, and reservation archives for FREE!
+                  </p>
+                </div>
+                {sanityStatus?.configured ? (
+                  <span className="px-3 py-1 bg-green-500/10 border border-green-500/20 text-green-400 font-bold tracking-widest text-[9px] uppercase rounded-full">
+                    ● Active (Cloud Syncing)
+                  </span>
+                ) : (
+                  <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold tracking-widest text-[9px] uppercase rounded-full">
+                    ● Local JSON Storage Fallback
+                  </span>
+                )}
+              </div>
+
+              {sanityStatus?.configured ? (
+                <div className="space-y-2.5">
+                  <p className="text-zinc-300 leading-relaxed">
+                    Splendid! Your restaurant state is securely synchronized in real-time with the remote **Sanity Content Lake**.
+                  </p>
+                  <div className="bg-luxury-950 p-4 border border-gold-900/10 rounded-xl space-y-2 font-mono text-[11px] text-zinc-400">
+                    <div><span className="text-gold-400 font-bold">PROJECT ID:</span> {sanityStatus.projectId}</div>
+                    <div><span className="text-gold-400 font-bold">DATASET:</span> {sanityStatus.dataset}</div>
+                    <div><span className="text-gold-400 font-bold">API VERSION:</span> {sanityStatus.apiVersion}</div>
+                    <div><span className="text-gold-400 font-bold">SECURITY ENCRYPTION:</span> Verified server-side mutation signature token</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 text-[11px] leading-relaxed">
+                  <div className="bg-amber-500/5 p-4 border border-amber-500/15 rounded-xl space-y-2 text-zinc-300">
+                    <p>
+                      You are currently running in <strong className="text-white">Local Standalone File Mode (data_store.json)</strong>. If you intend to deploy your repository to public hosting platforms like Hugging Face Spaces or GitHub and would like client updates (menu changes, custom titles, reservation status) to persist securely over server restarts, Sanity.io offers an elite, completely free content database.
+                    </p>
+                    <p className="text-zinc-400">
+                      It takes <strong className="text-white">less than 5 minutes to set up</strong>, does not require a credit card, and gives you a magnificent remote dashboard to manage your menu items too!
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-serif text-sm font-semibold text-white uppercase tracking-wider">How to initiate Sanity cloud sync (100% Free):</h4>
+                    <ol className="list-decimal list-inside space-y-2.5 text-zinc-400 pl-1">
+                      <li>Visit <a href="https://sanity.io" target="_blank" rel="noopener noreferrer" className="text-gold-400 hover:underline hover:text-gold-300 font-semibold">Sanity.io</a> and register a free account.</li>
+                      <li>Generate a new project inside your Sanity console or run <code className="text-xs text-zinc-300 bg-luxury-950 px-1.5 py-0.5 border border-gold-900/10 rounded">npm create sanity@latest</code>.</li>
+                      <li>In your Sanity project console, go to <strong className="text-white">API Settings</strong> and create a token with a <strong className="text-gold-400 font-semibold">Write (Editor)</strong> role.</li>
+                      <li>Under <strong className="text-white">CORS Origins</strong>, add your workspace URLs (or <code className="text-zinc-300 bg-luxury-950 px-1">*</code> for local testing) to allow connections.</li>
+                      <li>Append these environment variables in your local environment, or declare them inside your deployment hosting settings:</li>
+                    </ol>
+
+                    <div className="bg-luxury-950 p-4 border border-gold-900/10 rounded-xl space-y-1.5 font-mono text-[11px] text-zinc-400">
+                      <div>SANITY_PROJECT_ID=<span className="text-zinc-500">"your-project-id"</span></div>
+                      <div>SANITY_TOKEN=<span className="text-zinc-500">"your-write-token-here"</span></div>
+                      <div>SANITY_DATASET=<span className="text-zinc-500">"production"</span></div>
+                      <div>SANITY_API_VERSION=<span className="text-zinc-500">"2024-01-01"</span></div>
+                    </div>
+
+                    <p className="text-[10px] text-zinc-500 italic mt-3">
+                      Note: When you restart the server with those credentials, L'Olympe's server will automatically migrate all your current local dishes, bookings, and content to Sanity!
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         </div>
 

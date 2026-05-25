@@ -3,13 +3,36 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from "@sanity/client";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || "3000", 10);
 const STORE_PATH = process.env.DATA_STORE_PATH || path.join(process.cwd(), "data_store.json");
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));
+
+// Sanity Client Initialization
+const isSanityConfigured = !!(process.env.SANITY_PROJECT_ID && process.env.SANITY_TOKEN);
+let sanityClient: any = null;
+
+if (isSanityConfigured) {
+  try {
+    sanityClient = createClient({
+      projectId: process.env.SANITY_PROJECT_ID,
+      dataset: process.env.SANITY_DATASET || "production",
+      useCdn: false,
+      apiVersion: process.env.SANITY_API_VERSION || "2024-01-01",
+      token: process.env.SANITY_TOKEN,
+    });
+    console.log("Sanity Client initialized successfully!");
+  } catch (err) {
+    console.error("Failed to initialize Sanity client:", err);
+  }
+}
 
 // In-Memory state store
 let state = {
@@ -177,21 +200,21 @@ let state = {
 };
 
 // Persistence functions
-function loadState() {
+function loadLocalState() {
   try {
     if (fs.existsSync(STORE_PATH)) {
       const data = fs.readFileSync(STORE_PATH, "utf8");
       state = JSON.parse(data);
-      console.log("Loaded state from file repository.");
+      console.log("Loaded default state from file repository.");
     } else {
-      saveState();
+      saveLocalState();
     }
   } catch (err) {
-    console.error("Error loading state:", err);
+    console.error("Error loading local state:", err);
   }
 }
 
-function saveState() {
+function saveLocalState() {
   try {
     const dir = path.dirname(STORE_PATH);
     if (!fs.existsSync(dir)) {
@@ -199,10 +222,145 @@ function saveState() {
     }
     fs.writeFileSync(STORE_PATH, JSON.stringify(state, null, 2), "utf8");
   } catch (err) {
-    console.error("Error saving state:", err);
+    console.error("Error saving local state:", err);
   }
 }
 
+async function migrateLocalStateToSanity() {
+  if (!sanityClient) return;
+  try {
+    console.log("Migrating starter state to Sanity content lake...");
+    const tx = sanityClient.transaction();
+
+    // 1. Settings
+    tx.createOrReplace({
+      _id: "restaurant-settings",
+      _type: "settings",
+      ...state.settings
+    });
+
+    // 2. Categories
+    state.categories.forEach(cat => {
+      tx.createOrReplace({
+        _id: cat.id,
+        _type: "category",
+        ...cat
+      });
+    });
+
+    // 3. Products
+    state.products.forEach(prod => {
+      tx.createOrReplace({
+        _id: prod.id,
+        _type: "product",
+        ...prod
+      });
+    });
+
+    // 4. Orders
+    state.orders.forEach(order => {
+      tx.createOrReplace({
+        _id: order.id,
+        _type: "order",
+        ...order
+      });
+    });
+
+    // 5. Reservations
+    state.reservations.forEach(res => {
+      tx.createOrReplace({
+        _id: res.id,
+        _type: "reservation",
+        ...res
+      });
+    });
+
+    await tx.commit();
+    console.log("Migration to Sanity completed successfully!");
+  } catch (err) {
+    console.error("Migration to Sanity failed:", err);
+  }
+}
+
+async function loadState() {
+  if (isSanityConfigured && sanityClient) {
+    try {
+      console.log("Connecting to Sanity.io content lake...");
+
+      const [products, categories, orders, reservations, settingsDoc] = await Promise.all([
+        sanityClient.fetch(`*[_type == "product"]`),
+        sanityClient.fetch(`*[_type == "category"]`),
+        sanityClient.fetch(`*[_type == "order"]`),
+        sanityClient.fetch(`*[_type == "reservation"]`),
+        sanityClient.fetch(`*[_type == "settings" && _id == "restaurant-settings"][0]`)
+      ]);
+
+      console.log(`Fetched from Sanity: ${products?.length || 0} products, ${categories?.length || 0} categories, ${orders?.length || 0} orders, ${reservations?.length || 0} reservations.`);
+
+      if ((!products || products.length === 0) && (!categories || categories.length === 0)) {
+        console.log("Sanity content lake is empty. Migrating default state to Sanity...");
+        await migrateLocalStateToSanity();
+        // Retry loading after completing the migration
+        const retryProducts = await sanityClient.fetch(`*[_type == "product"]`);
+        const retryCategories = await sanityClient.fetch(`*[_type == "category"]`);
+        const retryOrders = await sanityClient.fetch(`*[_type == "order"]`);
+        const retryReservations = await sanityClient.fetch(`*[_type == "reservation"]`);
+        const retrySettings = await sanityClient.fetch(`*[_type == "settings" && _id == "restaurant-settings"][0]`);
+
+        state.products = (retryProducts || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+        state.categories = (retryCategories || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+        state.orders = (retryOrders || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+        state.reservations = (retryReservations || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+        if (retrySettings) {
+          const { _id, _type, _rev, _createdAt, _updatedAt, ...rest } = retrySettings;
+          state.settings = rest;
+        }
+        return;
+      }
+
+      state.products = (products || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+      state.categories = (categories || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+      state.orders = (orders || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+      state.reservations = (reservations || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+
+      if (settingsDoc) {
+        const { _id, _type, _rev, _createdAt, _updatedAt, ...rest } = settingsDoc;
+        state.settings = rest;
+      }
+      console.log("State synchronized with Sanity.io successfully.");
+    } catch (err) {
+      console.error("Error loading state from Sanity, falling back to local JSON:", err);
+      loadLocalState();
+    }
+  } else {
+    loadLocalState();
+  }
+}
+
+function saveState() {
+  saveLocalState();
+}
+
+async function saveStateToSanity(docType: string, id: string, docData: any, isDelete = false) {
+  if (!isSanityConfigured || !sanityClient) return;
+  try {
+    if (isDelete) {
+      await sanityClient.delete(id);
+      console.log(`Deleted document ${id} of type ${docType} from Sanity.`);
+    } else {
+      await sanityClient.createOrReplace({
+        _id: id,
+        _type: docType,
+        ...docData
+      });
+      console.log(`Saved/Updated document ${id} of type ${docType} in Sanity.`);
+    }
+  } catch (err) {
+    console.error(`Failed to save to Sanity for Type: ${docType}, ID: ${id}:`, err);
+  }
+}
+
+// Initial state load
 loadState();
 
 // SSE Clients list
@@ -241,89 +399,120 @@ app.get("/api/state", (req, res) => {
 });
 
 // Create Order
-app.post("/api/orders", (req, res) => {
+app.post("/api/orders", async (req, res) => {
   const order = req.body;
   state.orders = [order, ...state.orders];
   saveState();
+  await saveStateToSanity("order", order.id, order);
   sendBroadcastUpdate();
   res.status(201).json({ success: true, order });
 });
 
 // Update Order Status
-app.put("/api/orders/:id/status", (req, res) => {
+app.put("/api/orders/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   state.orders = state.orders.map(o => o.id === id ? { ...o, status } : o);
   saveState();
+  const updatedOrder = state.orders.find(o => o.id === id);
+  if (updatedOrder) {
+    await saveStateToSanity("order", id, updatedOrder);
+  }
   sendBroadcastUpdate();
   res.json({ success: true });
 });
 
 // Create Reservation
-app.post("/api/reservations", (req, res) => {
+app.post("/api/reservations", async (req, res) => {
   const reservation = req.body;
   state.reservations = [reservation, ...state.reservations];
   saveState();
+  await saveStateToSanity("reservation", reservation.id, reservation);
   sendBroadcastUpdate();
   res.status(201).json({ success: true, reservation });
 });
 
 // Update Reservation Status
-app.put("/api/reservations/:id/status", (req, res) => {
+app.put("/api/reservations/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   state.reservations = state.reservations.map(r => r.id === id ? { ...r, status } : r);
   saveState();
+  const updatedRes = state.reservations.find(r => r.id === id);
+  if (updatedRes) {
+    await saveStateToSanity("reservation", id, updatedRes);
+  }
   sendBroadcastUpdate();
   res.json({ success: true });
 });
 
 // Category Endpoints
-app.post("/api/categories", (req, res) => {
+app.post("/api/categories", async (req, res) => {
   const cat = req.body;
   state.categories.push(cat);
   saveState();
+  await saveStateToSanity("category", cat.id, cat);
   sendBroadcastUpdate();
   res.json({ success: true, cat });
 });
 
-app.delete("/api/categories/:id", (req, res) => {
-  state.categories = state.categories.filter(c => c.id !== req.params.id);
+app.delete("/api/categories/:id", async (req, res) => {
+  const { id } = req.params;
+  state.categories = state.categories.filter(c => c.id !== id);
   saveState();
+  await saveStateToSanity("category", id, null, true);
   sendBroadcastUpdate();
   res.json({ success: true });
 });
 
 // Product Endpoints
-app.post("/api/products", (req, res) => {
+app.post("/api/products", async (req, res) => {
   const prod = req.body;
   state.products = [prod, ...state.products];
   saveState();
+  await saveStateToSanity("product", prod.id, prod);
   sendBroadcastUpdate();
   res.json({ success: true, prod });
 });
 
-app.put("/api/products/:id", (req, res) => {
+app.put("/api/products/:id", async (req, res) => {
   const { id } = req.params;
   state.products = state.products.map(p => p.id === id ? { ...p, ...req.body } : p);
   saveState();
+  const updatedProd = state.products.find(p => p.id === id);
+  if (updatedProd) {
+    await saveStateToSanity("product", id, updatedProd);
+  }
   sendBroadcastUpdate();
   res.json({ success: true });
 });
 
-app.delete("/api/products/:id", (req, res) => {
-  state.products = state.products.filter(p => p.id !== req.params.id);
+app.delete("/api/products/:id", async (req, res) => {
+  const { id } = req.params;
+  state.products = state.products.filter(p => p.id !== id);
   saveState();
+  await saveStateToSanity("product", id, null, true);
   sendBroadcastUpdate();
   res.json({ success: true });
 });
 
 // Settings Endpoint
-app.put("/api/settings", (req, res) => {
+app.put("/api/settings", async (req, res) => {
   state.settings = { ...state.settings, ...req.body };
   saveState();
+  await saveStateToSanity("settings", "restaurant-settings", state.settings);
   sendBroadcastUpdate();
   res.json({ success: true, settings: state.settings });
+});
+
+// Sanity status API
+app.get("/api/sanity-status", (req, res) => {
+  res.json({
+    configured: isSanityConfigured,
+    projectId: process.env.SANITY_PROJECT_ID || null,
+    dataset: process.env.SANITY_DATASET || "production",
+    apiVersion: process.env.SANITY_API_VERSION || "2024-01-01"
+  });
 });
 
 // Lazy Gemini Client and AI Concierge Chat Route
@@ -419,6 +608,11 @@ Your Instructions:
 
 // Vite Middleware integration for production/dev
 async function startServer() {
+  if (process.env.VERCEL) {
+    console.log("On Vercel environment: Bypassing local server listener.");
+    return;
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -439,3 +633,5 @@ async function startServer() {
 }
 
 startServer();
+
+export default app;
