@@ -89,6 +89,108 @@ const defaultNotifs: SystemNotif[] = [
   { id: 'not-3', type: 'warning', message: 'Product inventory alerts: Piedmont Truffle Pasta reached low stock.', timestamp: '2026-05-21', read: true }
 ];
 
+const defaultCategories: Category[] = [
+  { id: "cat-1", name: "Signatures", slug: "signatures", description: "Culinary masterpieces of luxury dining", image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80" },
+  { id: "cat-2", name: "Appetizers", slug: "appetizers", description: "Curated sensory starters to ignite the journey", image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=800&q=80" },
+  { id: "cat-3", name: "Caviar & Seafood", slug: "seafood", description: "Exquisite delicacies harvested from deep waters", image: "https://images.unsplash.com/photo-1534080391025-a77c7ec4403e?auto=format&fit=crop&w=800&q=80" },
+  { id: "cat-4", name: "Mains", slug: "mains", description: "Prime selection proteins and luxurious roasts", image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80" },
+  { id: "cat-5", name: "Desserts", slug: "desserts", description: "Gilded confections and hand-spun chocolates", image: "https://images.unsplash.com/photo-1579372786545-d24232daf58c?auto=format&fit=crop&w=800&q=80" },
+  { id: "cat-6", name: "Elixirs", slug: "elixirs", description: "Artisanal cocktails, botanical tonics and rare teas", image: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=800&q=80" }
+];
+
+const defaultProducts: Product[] = [
+  {
+    id: "prod-1",
+    name: "Imperial Golden Osetra Caviar Service",
+    description: "Directly sourced premium Caspian Sea Osetra caviar served on ice over hand-carved mother-of-pearl spoons with traditional buckwheat blinis, crême fraîche, and chives.",
+    price: 320,
+    categoryId: "cat-3",
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80",
+    status: "available",
+    rating: 4.9,
+    ratingCount: 42,
+    tags: ["Michelin Choice", "Rare Caviar", "Royal Pairings"],
+    ingredients: ["Osetra Caviar (50g)", "Warm Blinis", "Egg White Mimosa", "Chives", "Crème Fraîche"],
+    preparationTime: 12,
+    nutrients: { calories: 240, proteins: "18g", fats: "15g", carbs: "4g" }
+  },
+  {
+    id: "prod-2",
+    name: "A5 Miyazaki Wagyu Sirloin Sizzle",
+    description: "Ultra-marbleized authentic Japanese Wagyu beef, lightly seared on high-heat volcanic stone. Enhanced with roasted black truffle salt, dynamic shoyu glaze, and fresh wasabi.",
+    price: 245,
+    categoryId: "cat-4",
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80",
+    status: "available",
+    rating: 5.0,
+    ratingCount: 68,
+    tags: ["Signature", "Imported Wagyu", "Chef Choice"],
+    ingredients: ["Miyazaki Wagyu (200g)", "Volcanic Sea Salt", "Truffle Reduction", "Pickled Lotus Root"],
+    preparationTime: 18,
+    nutrients: { calories: 580, proteins: "34g", fats: "48g", carbs: "2g" }
+  },
+  {
+    id: "prod-3",
+    name: "Brittany Blue Lobster Thermidor",
+    description: "Wild Brittany lobster caught off the pristine French coastline, poached in fine Chablis wine, combined with sliced porcini mushrooms and coated in a lavish Gruyère brandy crust.",
+    price: 185,
+    categoryId: "cat-3",
+    image: "https://images.unsplash.com/photo-1534080391025-a77c7ec4403e?auto=format&fit=crop&w=800&q=80",
+    status: "available",
+    rating: 4.8,
+    ratingCount: 31,
+    tags: ["Ocean Classic", "Lobster", "Premium Cooked"],
+    ingredients: ["French Blue Lobster", "Cognac VSOP", "Wild Porcini", "Aged Gruyère", "Tarragon Butter"],
+    preparationTime: 25,
+    nutrients: { calories: 420, proteins: "29g", fats: "22g", carbs: "9g" }
+  },
+  {
+    id: "prod-4",
+    name: "Piedmont White Truffle Agnolotti",
+    description: "Delicate handmade pillows filled with slow-cooked veal breast, drenched in premium pasture butter, finished with heaps of fresh-shaved Autumn Piedmont white truffles.",
+    price: 95,
+    categoryId: "cat-2",
+    image: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=800&q=80",
+    status: "available",
+    rating: 4.9,
+    ratingCount: 54,
+    tags: ["Handmade Pasta", "Autumn Truffles", "V"],
+    ingredients: ["Agnolotti Pasta", "Veal Filling", "White Truffles", "Parietal Salt", "Eshire Butter"],
+    preparationTime: 15,
+    nutrients: { calories: 490, proteins: "16g", fats: "28g", carbs: "44g" }
+  },
+  {
+    id: "prod-5",
+    name: "Gold Leaf Valrhona Soufflé",
+    description: "70% Valrhona Dark Guanaja chocolate soufflé, perfectly baked till billowing, dusted with edible 24-karat gold gold leaf, and injected with cold Grand Marnier crème anglaise.",
+    price: 45,
+    categoryId: "cat-5",
+    image: "https://images.unsplash.com/photo-1579372786545-d24232daf58c?auto=format&fit=crop&w=800&q=80",
+    status: "available",
+    rating: 4.7,
+    ratingCount: 89,
+    tags: ["Gold Label", "Award Winning", "V"],
+    ingredients: ["Valrhona Chocolate 70%", "Organic Eggs", "Grand Marnier liqueur", "24k Gold Leaf", "Tahitian Vanilla"],
+    preparationTime: 20,
+    nutrients: { calories: 350, proteins: "6g", fats: "18g", carbs: "38g" }
+  },
+  {
+    id: "prod-6",
+    name: "Royal Hibiscus Saffron Nectar",
+    description: "Sensational mocktail brewed with Egyptian crimson hibiscus petals, organic saffron threads, dynamic botanicals, sparkling volcanic water, finished with a fresh wild mint crown.",
+    price: 28,
+    categoryId: "cat-6",
+    image: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=800&q=80",
+    status: "available",
+    rating: 4.6,
+    ratingCount: 19,
+    tags: ["Elixir", "Organic Tonic", "Refreshing"],
+    ingredients: ["Dried Hibiscus", "Saffron Strands", "Elderflower essence", "Sparkling Spring Water", "Mint"],
+    preparationTime: 5,
+    nutrients: { calories: 95, proteins: "0g", fats: "0g", carbs: "23g" }
+  }
+];
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Try loading states from LocalStorage or fallback
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -102,9 +204,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : preloadedUsers;
   });
 
-  // Server-synced states
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  // Server-synced states with default static seed fallbacks
+  const [products, setProducts] = useState<Product[]>(defaultProducts);
+  const [categories, setCategories] = useState<Category[]>(defaultCategories);
   const [orders, setOrders] = useState<Order[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [settings, setSettings] = useState<StoreSettings>({
