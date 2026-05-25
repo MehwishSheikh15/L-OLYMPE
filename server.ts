@@ -15,6 +15,25 @@ const STORE_PATH = process.env.DATA_STORE_PATH || path.join(process.cwd(), "data
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
+let stateLoadedPromise: Promise<void> | null = null;
+
+function ensureStateLoaded(): Promise<void> {
+  if (!stateLoadedPromise) {
+    stateLoadedPromise = loadState();
+  }
+  return stateLoadedPromise;
+}
+
+// Middleware to block API requests until database is fully initialized
+app.use("/api", async (req, res, next) => {
+  try {
+    await ensureStateLoaded();
+  } catch (err) {
+    console.error("Critical error in state loader middleware:", err);
+  }
+  next();
+});
+
 // Sanity Client Initialization
 const isSanityConfigured = !!(process.env.SANITY_PROJECT_ID && process.env.SANITY_TOKEN);
 let sanityClient: any = null;
@@ -287,12 +306,19 @@ async function loadState() {
     try {
       console.log("Connecting to Sanity.io content lake...");
 
-      const [products, categories, orders, reservations, settingsDoc] = await Promise.all([
-        sanityClient.fetch(`*[_type == "product"]`),
-        sanityClient.fetch(`*[_type == "category"]`),
-        sanityClient.fetch(`*[_type == "order"]`),
-        sanityClient.fetch(`*[_type == "reservation"]`),
-        sanityClient.fetch(`*[_type == "settings" && _id == "restaurant-settings"][0]`)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Sanity query timed out after 3000ms")), 3000)
+      );
+
+      const [products, categories, orders, reservations, settingsDoc] = await Promise.race([
+        Promise.all([
+          sanityClient.fetch(`*[_type == "product"]`),
+          sanityClient.fetch(`*[_type == "category"]`),
+          sanityClient.fetch(`*[_type == "order"]`),
+          sanityClient.fetch(`*[_type == "reservation"]`),
+          sanityClient.fetch(`*[_type == "settings" && _id == "restaurant-settings"][0]`)
+        ]),
+        timeoutPromise
       ]);
 
       console.log(`Fetched from Sanity: ${products?.length || 0} products, ${categories?.length || 0} categories, ${orders?.length || 0} orders, ${reservations?.length || 0} reservations.`);
@@ -300,12 +326,17 @@ async function loadState() {
       if ((!products || products.length === 0) && (!categories || categories.length === 0)) {
         console.log("Sanity content lake is empty. Migrating default state to Sanity...");
         await migrateLocalStateToSanity();
-        // Retry loading after completing the migration
-        const retryProducts = await sanityClient.fetch(`*[_type == "product"]`);
-        const retryCategories = await sanityClient.fetch(`*[_type == "category"]`);
-        const retryOrders = await sanityClient.fetch(`*[_type == "order"]`);
-        const retryReservations = await sanityClient.fetch(`*[_type == "reservation"]`);
-        const retrySettings = await sanityClient.fetch(`*[_type == "settings" && _id == "restaurant-settings"][0]`);
+        // Retry loading after completing the migration with a timeout as well
+        const [retryProducts, retryCategories, retryOrders, retryReservations, retrySettings] = await Promise.race([
+          Promise.all([
+            sanityClient.fetch(`*[_type == "product"]`),
+            sanityClient.fetch(`*[_type == "category"]`),
+            sanityClient.fetch(`*[_type == "order"]`),
+            sanityClient.fetch(`*[_type == "reservation"]`),
+            sanityClient.fetch(`*[_type == "settings" && _id == "restaurant-settings"][0]`)
+          ]),
+          timeoutPromise
+        ]);
 
         state.products = (retryProducts || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
         state.categories = (retryCategories || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
@@ -361,7 +392,7 @@ async function saveStateToSanity(docType: string, id: string, docData: any, isDe
 }
 
 // Initial state load
-loadState();
+ensureStateLoaded();
 
 // SSE Clients list
 let clients: express.Response[] = [];
