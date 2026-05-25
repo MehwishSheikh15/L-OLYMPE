@@ -326,33 +326,68 @@ async function loadState() {
       if ((!products || products.length === 0) && (!categories || categories.length === 0)) {
         console.log("Sanity content lake is empty. Migrating default state to Sanity...");
         await migrateLocalStateToSanity();
-        // Retry loading after completing the migration with a timeout as well
-        const [retryProducts, retryCategories, retryOrders, retryReservations, retrySettings] = await Promise.race([
-          Promise.all([
-            sanityClient.fetch(`*[_type == "product"]`),
-            sanityClient.fetch(`*[_type == "category"]`),
-            sanityClient.fetch(`*[_type == "order"]`),
-            sanityClient.fetch(`*[_type == "reservation"]`),
-            sanityClient.fetch(`*[_type == "settings" && _id == "restaurant-settings"][0]`)
-          ]),
-          timeoutPromise
-        ]);
+        
+        try {
+          // Retry loading after completing the migration with a timeout as well
+          const [retryProducts, retryCategories, retryOrders, retryReservations, retrySettings] = await Promise.race([
+            Promise.all([
+              sanityClient.fetch(`*[_type == "product"]`),
+              sanityClient.fetch(`*[_type == "category"]`),
+              sanityClient.fetch(`*[_type == "order"]`),
+              sanityClient.fetch(`*[_type == "reservation"]`),
+              sanityClient.fetch(`*[_type == "settings" && _id == "restaurant-settings"][0]`)
+            ]),
+            timeoutPromise
+          ]);
 
-        state.products = (retryProducts || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
-        state.categories = (retryCategories || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
-        state.orders = (retryOrders || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
-        state.reservations = (retryReservations || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
-        if (retrySettings) {
-          const { _id, _type, _rev, _createdAt, _updatedAt, ...rest } = retrySettings;
-          state.settings = rest;
+          if (retryProducts && retryProducts.length > 0) {
+            state.products = retryProducts.map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+          } else {
+            console.log("Migration retry returned no products. Retaining default products.");
+            loadLocalState();
+          }
+
+          if (retryCategories && retryCategories.length > 0) {
+            state.categories = retryCategories.map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+          }
+
+          if (retryOrders && retryOrders.length > 0) {
+            state.orders = retryOrders.map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+          }
+
+          if (retryReservations && retryReservations.length > 0) {
+            state.reservations = retryReservations.map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+          }
+
+          if (retrySettings) {
+            const { _id, _type, _rev, _createdAt, _updatedAt, ...rest } = retrySettings;
+            state.settings = rest;
+          }
+        } catch (retryErr) {
+          console.error("Failed to query Sanity after migration, falling back to local files:", retryErr);
+          loadLocalState();
         }
         return;
       }
 
-      state.products = (products || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
-      state.categories = (categories || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
-      state.orders = (orders || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
-      state.reservations = (reservations || []).map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+      if (products && products.length > 0) {
+        state.products = products.map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+      } else {
+        console.log("No products returned from Sanity content lake. Retaining local products.");
+        loadLocalState();
+      }
+
+      if (categories && categories.length > 0) {
+        state.categories = categories.map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+      }
+
+      if (orders && orders.length > 0) {
+        state.orders = orders.map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+      }
+
+      if (reservations && reservations.length > 0) {
+        state.reservations = reservations.map(({ _id, _type, _rev, _createdAt, _updatedAt, ...rest }: any) => ({ id: rest.id || _id, ...rest }));
+      }
 
       if (settingsDoc) {
         const { _id, _type, _rev, _createdAt, _updatedAt, ...rest } = settingsDoc;
@@ -605,10 +640,13 @@ Your Instructions:
 3. Welcome guests warmly. Address them with premium hospitality.
 4. Keep your responses engaging, beautifully formatted in Markdown paragraphs, relatively brief (within 150 words) so they look magnificent on a floating side widget. Feel free to use subtle gourmet descriptions!`;
 
-    // Support chat history format if provided
+    // Support chat history format if provided. Must strictly start with a "user" turn for Gemini.
     const contents = [];
     if (history && Array.isArray(history)) {
       for (const turn of history) {
+        if (turn.role === "model" && contents.length === 0) {
+          continue; // Skip greeting/welcome message turns that are model-initiated
+        }
         contents.push({
           role: turn.role,
           parts: [{ text: turn.text }]
