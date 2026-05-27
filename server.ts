@@ -469,7 +469,7 @@ app.post("/api/orders", async (req, res) => {
   const order = req.body;
   state.orders = [order, ...state.orders];
   saveState();
-  await saveStateToSanity("order", order.id, order);
+  saveStateToSanity("order", order.id, order).catch(err => console.error("Secondary Sanity sync failed:", err));
   sendBroadcastUpdate();
   res.status(201).json({ success: true, order });
 });
@@ -482,7 +482,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
   saveState();
   const updatedOrder = state.orders.find(o => o.id === id);
   if (updatedOrder) {
-    await saveStateToSanity("order", id, updatedOrder);
+    saveStateToSanity("order", id, updatedOrder).catch(err => console.error("Secondary Sanity sync failed:", err));
   }
   sendBroadcastUpdate();
   res.json({ success: true });
@@ -493,7 +493,7 @@ app.post("/api/reservations", async (req, res) => {
   const reservation = req.body;
   state.reservations = [reservation, ...state.reservations];
   saveState();
-  await saveStateToSanity("reservation", reservation.id, reservation);
+  saveStateToSanity("reservation", reservation.id, reservation).catch(err => console.error("Secondary Sanity sync failed:", err));
   sendBroadcastUpdate();
   res.status(201).json({ success: true, reservation });
 });
@@ -506,7 +506,7 @@ app.put("/api/reservations/:id/status", async (req, res) => {
   saveState();
   const updatedRes = state.reservations.find(r => r.id === id);
   if (updatedRes) {
-    await saveStateToSanity("reservation", id, updatedRes);
+    saveStateToSanity("reservation", id, updatedRes).catch(err => console.error("Secondary Sanity sync failed:", err));
   }
   sendBroadcastUpdate();
   res.json({ success: true });
@@ -517,7 +517,7 @@ app.post("/api/categories", async (req, res) => {
   const cat = req.body;
   state.categories.push(cat);
   saveState();
-  await saveStateToSanity("category", cat.id, cat);
+  saveStateToSanity("category", cat.id, cat).catch(err => console.error("Secondary Sanity sync failed:", err));
   sendBroadcastUpdate();
   res.json({ success: true, cat });
 });
@@ -526,7 +526,7 @@ app.delete("/api/categories/:id", async (req, res) => {
   const { id } = req.params;
   state.categories = state.categories.filter(c => c.id !== id);
   saveState();
-  await saveStateToSanity("category", id, null, true);
+  saveStateToSanity("category", id, null, true).catch(err => console.error("Secondary Sanity sync failed:", err));
   sendBroadcastUpdate();
   res.json({ success: true });
 });
@@ -536,7 +536,7 @@ app.post("/api/products", async (req, res) => {
   const prod = req.body;
   state.products = [prod, ...state.products];
   saveState();
-  await saveStateToSanity("product", prod.id, prod);
+  saveStateToSanity("product", prod.id, prod).catch(err => console.error("Secondary Sanity sync failed:", err));
   sendBroadcastUpdate();
   res.json({ success: true, prod });
 });
@@ -547,7 +547,7 @@ app.put("/api/products/:id", async (req, res) => {
   saveState();
   const updatedProd = state.products.find(p => p.id === id);
   if (updatedProd) {
-    await saveStateToSanity("product", id, updatedProd);
+    saveStateToSanity("product", id, updatedProd).catch(err => console.error("Secondary Sanity sync failed:", err));
   }
   sendBroadcastUpdate();
   res.json({ success: true });
@@ -557,7 +557,7 @@ app.delete("/api/products/:id", async (req, res) => {
   const { id } = req.params;
   state.products = state.products.filter(p => p.id !== id);
   saveState();
-  await saveStateToSanity("product", id, null, true);
+  saveStateToSanity("product", id, null, true).catch(err => console.error("Secondary Sanity sync failed:", err));
   sendBroadcastUpdate();
   res.json({ success: true });
 });
@@ -566,7 +566,7 @@ app.delete("/api/products/:id", async (req, res) => {
 app.put("/api/settings", async (req, res) => {
   state.settings = { ...state.settings, ...req.body };
   saveState();
-  await saveStateToSanity("settings", "restaurant-settings", state.settings);
+  saveStateToSanity("settings", "restaurant-settings", state.settings).catch(err => console.error("Secondary Sanity sync failed:", err));
   sendBroadcastUpdate();
   res.json({ success: true, settings: state.settings });
 });
@@ -581,13 +581,14 @@ app.get("/api/sanity-status", (req, res) => {
   });
 });
 
-// Lazy Gemini Client and AI Concierge Chat Route
+// Lazy Gemini Client and AI Concierge Fallback Chat Mechanics
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient() {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY environment variable is not defined");
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey === "YOUR_GEMINI_API_KEY" || apiKey.includes("MY_KEY")) {
+      console.warn("GEMINI_API_KEY is not configured or uses a placeholder. Falling back to rule-based Ambrosia concierge.");
+      return null;
     }
     aiClient = new GoogleGenAI({
       apiKey,
@@ -601,6 +602,75 @@ function getGeminiClient() {
   return aiClient;
 }
 
+// Highly stylized luxury fallback generator when Gemini API is unconfigured or fails
+function getAmbrosiaFallbackResponse(message: string): string {
+  const msgLower = message.toLowerCase();
+  
+  // Format dynamic live food list
+  const foodList = state.products.map(p => `- **${p.name}** ($${p.price}): ${p.description}`).join("\n");
+  
+  if (msgLower.includes("reserve") || msgLower.includes("reservation") || msgLower.includes("book") || msgLower.includes("table") || msgLower.includes("seat") || msgLower.includes("salon")) {
+    return `To orchestrate your culinary pilgrimage to **${state.settings.restaurantName || "L'Olympe Paris"}**, please navigate to our elegant **Reservations** tab in the main panel. 
+    
+You may choose your preferred salon slot (such as the *Chef's Table* featuring dynamic fire theatre, our quiet vintage *Wine Cellar*, or the grand glassmorphism *Main Salon*). I will personally ensure your tableside requirements are met to the highest specifications under Chef Alain's guidance.`;
+  }
+  
+  if (msgLower.includes("wagyu") || msgLower.includes("beef") || msgLower.includes("steak") || msgLower.includes("meat")) {
+    const wagyu = state.products.find(p => p.name.toLowerCase().includes("wagyu")) || state.products[1];
+    return `Ah, and a connoisseur's choice! Our **${wagyu?.name || "A5 Miyazaki Wagyu Sirloin Sizzle"}** ($${wagyu?.price || 245}) is imported directly from Japan's Miyazaki prefecture. 
+    
+Graced with roasted black truffle salt, dynamic shoyu glaze, and seared tableside on volcanic high-heat stones. Truly, an outstanding sensory masterpiece.`;
+  }
+  
+  if (msgLower.includes("caviar") || msgLower.includes("sea") || msgLower.includes("seafood") || msgLower.includes("lobster") || msgLower.includes("fish") || msgLower.includes("osetra")) {
+    const caviar = state.products.find(p => p.name.toLowerCase().includes("caviar")) || state.products[0];
+    return `For high-seas indulgence, we present our legendary **${caviar?.name || "Imperial Golden Osetra Caviar Service"}** ($${caviar?.price || 320}), directly sourced from the Caspian Sea and presented on hand-carved mother-of-pearl spoons with warm buckwheat blinis. 
+    
+Alternatively, our wild **Brittany Blue Lobster Thermidor** ($185) is poached in Chablis and coated in a lavish Gruyère brandy crust.`;
+  }
+  
+  if (msgLower.includes("truffle") || msgLower.includes("pasta") || msgLower.includes("agnolotti") || msgLower.includes("veal") || msgLower.includes("noodle")) {
+    const pasta = state.products.find(p => p.name.toLowerCase().includes("truffle")) || state.products[3];
+    return `Indeed, our luxury seasonal masterpiece is the **${pasta?.name || "Piedmont White Truffle Agnolotti"}** ($${pasta?.price || 95}). Delicate handmade pasta pillows filled with slow-cooked veal breast, drenched in premium pasture butter, and finished tableside with generous heaps of fresh-shaved Autumn Piedmont white truffles.`;
+  }
+  
+  if (msgLower.includes("dessert") || msgLower.includes("sweet") || msgLower.includes("chocolate") || msgLower.includes("souffle") || msgLower.includes("soufflé") || msgLower.includes("valrhona")) {
+    const dessert = state.products.find(p => p.name.toLowerCase().includes("souff")) || state.products[4];
+    return `To conclude your journey, Chef Alain recommends our **${dessert?.name || "Gold Leaf Valrhona Soufflé"}** ($${dessert?.price || 45}). Sourced from 70% Valrhona Dark Guanaja chocolate, dusted with edible 24-karat gold leaf, and injected with cold Grand Marnier crème anglaise. Truly, an award-winning sensory finale.`;
+  }
+  
+  if (msgLower.includes("mocktail") || msgLower.includes("drink") || msgLower.includes("beverage") || msgLower.includes("nectar") || msgLower.includes("hibiscus") || msgLower.includes("saffron") || msgLower.includes("tea") || msgLower.includes("wine")) {
+    return `To enrich your experience, our **Royal Hibiscus Saffron Nectar** ($28) is a divine mocktail brewed with Egyptian crimson hibiscus petals, organic saffron threads, sparkling volcanic water, and finished with a fresh wild mint crown. We also preserve 14,000 vintage bottles of fine wines in our historic repository.`;
+  }
+  
+  if (msgLower.includes("price") || msgLower.includes("menu") || msgLower.includes("cost") || msgLower.includes("dishes") || msgLower.includes("dish") || msgLower.includes("list") || msgLower.includes("what do you have") || msgLower.includes("specialt")) {
+    return `It is my absolute honor to present our current live menu database of specialties:\n\n${foodList}\n\nEach creation is designed as an oil painting, engineered for those who seek high-art gastronomy. Which masterpiece speaks to your senses today?`;
+  }
+  
+  if (msgLower.includes("contact") || msgLower.includes("phone") || msgLower.includes("email") || msgLower.includes("mail") || msgLower.includes("location") || msgLower.includes("address") || msgLower.includes("where") || msgLower.includes("hours") || msgLower.includes("open") || msgLower.includes("time")) {
+    return `**${state.settings.restaurantName || "L'Olympe Paris"}** is situated in the heart of French culinary history at **${state.settings.address || "Place de la Concorde, 75008 Paris"}**. Our grand golden arches welcome elite guests daily:
+- **Afternoon Tea & Caviar Service**: 12:00 PM – 2:30 PM
+- **Michelin Signature Dinners**: 7:00 PM – 11:30 PM
+
+For direct VIP arrangements, please connect with our stewards at **${state.settings.contactPhone || "+33 (1) 40 55 90 90"}** or via **${state.settings.contactEmail || "concierge@lolympe-paris.com"}**.`;
+  }
+  
+  if (msgLower.includes("hello") || msgLower.includes("hi") || msgLower.includes("hey") || msgLower.includes("bonjour") || msgLower.includes("greetings") || msgLower.includes("salutations") || msgLower.includes("who are you") || msgLower.includes("ambrosia")) {
+    return `Salutations, honored guest! I am **Ambrosia**, your dedicated digital luxury concierge. 
+
+I am here to guide you through the sensory wonders of **${state.settings.restaurantName || "L'Olympe Paris"}**, assist with table reservations, or help you customize our three-Michelin-star selections. How may I elevate your day?`;
+  }
+
+  // Generic sophisticated fallback
+  const firstProd = state.products[0];
+  const secondProd = state.products[1];
+  return `Gracious salutations. I am **Ambrosia**, and I am here to guide your senses. 
+
+Would you be considering starting with our signature **${firstProd?.name || "Imperial Caviar"}** ($${firstProd?.price || 320}), or perhaps our magnificent **${secondProd?.name || "A5 Miyazaki Wagyu"}** ($${secondProd?.price || 245})? 
+
+Please share details of any tableside fire desires, fine menu queries, or reservations you wish us to choreograph on your behalf.`;
+}
+
 app.post("/api/chat", async (req, res) => {
   try {
     const { message, history } = req.body;
@@ -609,6 +679,12 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const ai = getGeminiClient();
+
+    // If Gemini client falls back (unconfigured) or API fails, we use our luxury rule responder
+    if (!ai) {
+      console.info("Using rule-based Ambrosia concierge mock-up responder due to lack of standard active key.");
+      return res.json({ text: getAmbrosiaFallbackResponse(message) });
+    }
 
     // Compile dynamic context from state
     const restaurantName = state.settings.restaurantName || "L'Olympe Paris";
@@ -670,8 +746,12 @@ Your Instructions:
 
     res.json({ text: response.text });
   } catch (error: any) {
-    console.error("Gemini Concierge Chat error:", error);
-    res.status(500).json({ error: error.message || "Ambrosia is currently attending other corporate dining lines." });
+    console.warn("Gemini Concierge Chat error, falling back to rule-based Ambrosia responder:", error);
+    try {
+      return res.json({ text: getAmbrosiaFallbackResponse(req.body.message) });
+    } catch {
+      res.status(500).json({ error: error.message || "Ambrosia is currently attending other corporate dining lines." });
+    }
   }
 });
 
