@@ -40,11 +40,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onOpenR
     setCouponCode('');
   };
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
+  const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!address || !phone) return;
 
-    const newOrder = placeOrder({ address, phone, paymentMethod });
+    const newOrder = await placeOrder({ address, phone, paymentMethod });
     if (newOrder) {
       setPlacedOrderInfo(newOrder);
       setShowCheckoutForm(false);

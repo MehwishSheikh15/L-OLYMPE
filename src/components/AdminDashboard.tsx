@@ -123,10 +123,10 @@ export const AdminDashboard: React.FC = () => {
       name: newProductName,
       description: newProductDesc,
       price: newProductPrice,
-      image: newProductImg,
+      image: newProductImg || 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=400&q=80',
       categoryId: newProductCategory,
       status: 'available',
-      tags: newProductTags.split(',').map(t => t.trim()),
+      tags: newProductTags ? newProductTags.split(',').map(t => t.trim()).filter(Boolean) : [],
       ingredients: ['Premium Selection Herbs', 'Eshire Butter', 'Sea Salt Flakes'],
       preparationTime: newProductPreparationTime
     });
@@ -135,6 +135,10 @@ export const AdminDashboard: React.FC = () => {
     setNewProductName('');
     setNewProductDesc('');
     setNewProductPrice(100);
+    setNewProductImg('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=400&q=80');
+    setNewProductCategory('cat-4');
+    setNewProductPreparationTime(15);
+    setNewProductTags('Signature, Chef Choice');
   };
 
   const handleAddCategory = (e: React.FormEvent) => {
@@ -152,13 +156,13 @@ export const AdminDashboard: React.FC = () => {
 
   const startEditProduct = (p: Product) => {
     setEditingProductId(p.id);
-    setNewProductName(p.name);
-    setNewProductDesc(p.description);
-    setNewProductPrice(p.price);
-    setNewProductImg(p.image);
-    setNewProductCategory(p.categoryId);
-    setNewProductPreparationTime(p.preparationTime);
-    setNewProductTags(p.tags.join(', '));
+    setNewProductName(p.name || '');
+    setNewProductDesc(p.description || '');
+    setNewProductPrice(p.price || 0);
+    setNewProductImg(p.image || '');
+    setNewProductCategory(p.categoryId || 'cat-4');
+    setNewProductPreparationTime(p.preparationTime || 15);
+    setNewProductTags(p.tags ? p.tags.join(', ') : '');
   };
 
   const saveEditedProduct = () => {
@@ -170,11 +174,16 @@ export const AdminDashboard: React.FC = () => {
       image: newProductImg,
       categoryId: newProductCategory,
       preparationTime: newProductPreparationTime,
-      tags: newProductTags.split(',').map(t => t.trim())
+      tags: newProductTags ? newProductTags.split(',').map(t => t.trim()).filter(Boolean) : []
     });
     setEditingProductId(null);
     setNewProductName('');
     setNewProductDesc('');
+    setNewProductPrice(100);
+    setNewProductImg('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=400&q=80');
+    setNewProductCategory('cat-4');
+    setNewProductPreparationTime(15);
+    setNewProductTags('Signature, Chef Choice');
   };
 
   return (
