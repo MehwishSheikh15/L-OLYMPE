@@ -58,6 +58,7 @@ interface AppContextType {
   pushNotification: (type: SystemNotif['type'], message: string) => void;
   markNotificationsAsRead: () => void;
   clearNotifications: () => void;
+  fetchServerState: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -204,23 +205,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : preloadedUsers;
   });
 
-  // Server-synced states with default static seed fallbacks
-  const [products, setProducts] = useState<Product[]>(defaultProducts);
-  const [categories, setCategories] = useState<Category[]>(defaultCategories);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [settings, setSettings] = useState<StoreSettings>({
-    restaurantName: 'L’Olympe Paris',
-    logoUrl: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=200&h=200&q=80',
-    contactPhone: '+33 (1) 40 55 90 90',
-    contactEmail: 'concierge@lolympe-paris.com',
-    address: 'Place de la Concorde, 75008 Paris, France',
-    heroTitle: 'Culinary Masterpieces Crafting Legendary Legacies',
-    heroSubtitle: 'Step into an exquisite sanctuary of sensory wonders, crafted with A5 Wagyu, golden caviar spoonfuls, and autumn Piedmont truffles.',
-    heroImageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=80',
-    aboutNarrative: `Founded by three-starred Michelin legend Chef Alain Gauthier, L'Olympe Paris is a sacred union of contemporary chemistry and classic French culinary heritage. Named after the home of gods, our dining chamber offers grand gold glassmorphism arches, an ancient stone wine repository holding 14,000 vintage bottles, and a personalized tableside fire culinary theatre. Every dish is crafted as an oil painting, engineered for those who seek high-art gastronomy.`,
-    bannerText: '✦ MICHELIN STARS 2026: L’OLYMPE RETAINS ITS HISTORIC THREE STAR DISTINCTION ✦',
-    seoKeywords: 'Michelin Star Paris, Luxury Fine Dining Paris, A5 Wagyu Caviar Bordeaux, Private Chef Table, Concorde French Restaurant'
+  // Server-synced states with default static seed fallbacks and local persistence layers to thrive on serverless cold starts
+  const [products, setProducts] = useState<Product[]>(() => {
+    const saved = localStorage.getItem('luxebite_products');
+    return saved ? JSON.parse(saved) : defaultProducts;
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const saved = localStorage.getItem('luxebite_categories');
+    return saved ? JSON.parse(saved) : defaultCategories;
+  });
+  const [orders, setOrders] = useState<Order[]>(() => {
+    const saved = localStorage.getItem('luxebite_orders');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [reservations, setReservations] = useState<Reservation[]>(() => {
+    const saved = localStorage.getItem('luxebite_reservations');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [settings, setSettings] = useState<StoreSettings>(() => {
+    const saved = localStorage.getItem('luxebite_settings');
+    return saved ? JSON.parse(saved) : {
+      restaurantName: 'L’Olympe Paris',
+      logoUrl: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=200&h=200&q=80',
+      contactPhone: '+33 (1) 40 55 90 90',
+      contactEmail: 'concierge@lolympe-paris.com',
+      address: 'Place de la Concorde, 75008 Paris, France',
+      heroTitle: 'Culinary Masterpieces Crafting Legendary Legacies',
+      heroSubtitle: 'Step into an exquisite sanctuary of sensory wonders, crafted with A5 Wagyu, golden caviar spoonfuls, and autumn Piedmont truffles.',
+      heroImageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=80',
+      aboutNarrative: `Founded by three-starred Michelin legend Chef Alain Gauthier, L'Olympe Paris is a sacred union of contemporary chemistry and classic French culinary heritage. Named after the home of gods, our dining chamber offers grand gold glassmorphism arches, an ancient stone wine repository holding 14,000 vintage bottles, and a personalized tableside fire culinary theatre. Every dish is crafted as an oil painting, engineered for those who seek high-art gastronomy.`,
+      bannerText: '✦ MICHELIN STARS 2026: L’OLYMPE RETAINS ITS HISTORIC THREE STAR DISTINCTION ✦',
+      seoKeywords: 'Michelin Star Paris, Luxury Fine Dining Paris, A5 Wagyu Caviar Bordeaux, Private Chef Table, Concorde French Restaurant'
+    };
   });
 
   // Client-only states
@@ -259,11 +275,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const response = await fetch('/api/state');
       if (response.ok) {
         const data = await response.json();
-        setProducts(data.products || []);
-        setCategories(data.categories || []);
-        setOrders(data.orders || []);
-        setReservations(data.reservations || []);
-        setSettings(data.settings || {});
+        
+        // Merge with local backups to prevent ephemeral serverless wipes of client's database
+        if (data.products && data.products.length > 0) {
+          setProducts(data.products);
+          localStorage.setItem('luxebite_products', JSON.stringify(data.products));
+        }
+        if (data.categories && data.categories.length > 0) {
+          setCategories(data.categories);
+          localStorage.setItem('luxebite_categories', JSON.stringify(data.categories));
+        }
+        
+        if (data.orders) {
+          const localOrdersStr = localStorage.getItem('luxebite_orders');
+          if (data.orders.length === 0 && localOrdersStr) {
+            const localOrders = JSON.parse(localOrdersStr);
+            if (localOrders.length > 0) {
+              setOrders(localOrders);
+              // Sync back to ephemeral server database so backend knows about them
+              localOrders.forEach(async (ord: Order) => {
+                try {
+                  await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ord)
+                  });
+                } catch (e) {
+                  console.error("Delayed order syner failed", e);
+                }
+              });
+            }
+          } else {
+            setOrders(data.orders);
+            localStorage.setItem('luxebite_orders', JSON.stringify(data.orders));
+          }
+        }
+
+        if (data.reservations) {
+          const localResStr = localStorage.getItem('luxebite_reservations');
+          if (data.reservations.length === 0 && localResStr) {
+            const localRes = JSON.parse(localResStr);
+            if (localRes.length > 0) {
+              setReservations(localRes);
+            }
+          } else {
+            setReservations(data.reservations);
+            localStorage.setItem('luxebite_reservations', JSON.stringify(data.reservations));
+          }
+        }
+
+        if (data.settings && Object.keys(data.settings).length > 0) {
+          setSettings(data.settings);
+          localStorage.setItem('luxebite_settings', JSON.stringify(data.settings));
+        }
       }
     } catch (err) {
       console.error("Failed to fetch state from backend:", err);
@@ -749,7 +813,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToCart, removeFromCart, updateCartQuantity, clearCart, toggleWishlist, applyPromoCode, activePromoCode, placeOrder, updateOrderStatus,
       bookTable, updateReservationStatus,
       updateSettings, addGalleryItem, deleteGalleryItem,
-      pushNotification, markNotificationsAsRead, clearNotifications
+      pushNotification, markNotificationsAsRead, clearNotifications,
+      fetchServerState
     }}>
       {children}
     </AppContext.Provider>

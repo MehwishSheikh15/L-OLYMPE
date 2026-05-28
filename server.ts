@@ -10,7 +10,7 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
-const STORE_PATH = process.env.DATA_STORE_PATH || path.join(process.cwd(), "data_store.json");
+const STORE_PATH = process.env.DATA_STORE_PATH || (process.env.VERCEL ? "/tmp/data_store.json" : path.join(process.cwd(), "data_store.json"));
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));

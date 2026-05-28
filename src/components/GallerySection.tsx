@@ -1,12 +1,37 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Image as ImageIcon, Camera } from 'lucide-react';
+import { Image as ImageIcon, Camera, ShoppingBag } from 'lucide-react';
+
+interface ExtendedGalleryItem {
+  id: string;
+  title: string;
+  category: 'dishes' | 'ambiance' | 'actions';
+  imageUrl: string;
+  price?: number;
+  originalProduct?: any;
+}
 
 export const GallerySection: React.FC = () => {
-  const { gallery } = useApp();
+  const { gallery, products, addToCart, pushNotification } = useApp();
   const [filter, setFilter] = useState<'all' | 'dishes' | 'ambiance' | 'actions'>('all');
 
-  const filteredItems = gallery.filter(item => filter === 'all' || item.category === filter);
+  // Convert the administrative products (with all edits/updates) into high-fidelity gallery dishes
+  const productGalleryItems: ExtendedGalleryItem[] = products.map(prod => ({
+    id: `prod-gal-${prod.id}`,
+    title: prod.name,
+    category: 'dishes' as const,
+    imageUrl: prod.image,
+    price: prod.price,
+    originalProduct: prod
+  }));
+
+  // Combine static ambiance/actions categories with the live admin-updated product dishes
+  const combinedItems: ExtendedGalleryItem[] = [
+    ...gallery.filter(item => item.category !== 'dishes'),
+    ...productGalleryItems
+  ];
+
+  const filteredItems = combinedItems.filter(item => filter === 'all' || item.category === filter);
 
   return (
     <section id="gallery" className="py-24 bg-[#050505] border-b border-white/5 relative">
@@ -52,13 +77,38 @@ export const GallerySection: React.FC = () => {
               />
               
               {/* Blur Glassmorphic Overlay Description */}
-              <div className="absolute inset-x-4 bottom-4 p-4 rounded-xl border border-white/10 bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300">
-                <span className="text-[8px] font-bold text-[#F27D26] tracking-widest uppercase block mb-1">
-                  {item.category}
-                </span>
-                <p className="text-xs text-white tracking-wide font-sans font-light">
+              <div className="absolute inset-x-4 bottom-4 p-4 rounded-xl border border-white/10 bg-black/75 backdrop-blur-md opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-10">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[8px] font-bold text-[#F27D26] tracking-widest uppercase block">
+                    {item.category}
+                  </span>
+                  {item.originalProduct && (
+                    <span className="text-[7px] font-bold bg-[#C5A059]/15 text-[#C5A059] px-1 py-0.5 rounded tracking-widest uppercase">
+                      Live Culinary Masterpiece
+                    </span>
+                  )}
+                </div>
+                
+                <p className="text-xs text-white tracking-wide font-sans font-medium line-clamp-1">
                   {item.title}
                 </p>
+
+                {item.originalProduct && (
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/10">
+                    <span className="font-serif text-[#C5A059] font-bold text-xs">€{item.price}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addToCart(item.originalProduct);
+                        pushNotification('success', `Added ${item.title} to your gastronomic carriage.`);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#F27D26] hover:bg-[#F27D26]/90 text-white text-[8px] font-bold uppercase tracking-wider rounded transition-colors"
+                    >
+                      <ShoppingBag className="h-2 w-2" />
+                      Add to Carriage
+                    </button>
+                  </div>
+                )}
               </div>
 
             </div>

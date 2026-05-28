@@ -15,7 +15,8 @@ export const AdminDashboard: React.FC = () => {
     orders, updateOrderStatus,
     reservations, updateReservationStatus,
     settings, updateSettings,
-    users, promoCodes, pushNotification
+    users, promoCodes, pushNotification,
+    fetchServerState
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'menu' | 'orders' | 'reservations' | 'marketing' | 'settings' | 'crm'>('overview');
@@ -68,6 +69,57 @@ export const AdminDashboard: React.FC = () => {
       .then(data => setSanityStatus(data))
       .catch(err => console.error("Error fetching Sanity status:", err));
   }, []);
+
+  // State for tracking orders that got updated or created in real-time
+  const [prevOrders, setPrevOrders] = useState<Order[]>([]);
+  const [highlightedOrders, setHighlightedOrders] = useState<Record<string, 'new' | 'updated'>>({});
+
+  React.useEffect(() => {
+    // If we have previous orders, compare them to detect real-time changes
+    if (prevOrders.length > 0) {
+      const newHighlights = { ...highlightedOrders };
+      let hasChanges = false;
+
+      orders.forEach(ord => {
+        const prev = prevOrders.find(o => o.id === ord.id);
+        if (!prev) {
+          // Newly placed order by customer in real-time
+          newHighlights[ord.id] = 'new';
+          hasChanges = true;
+          pushNotification('success', `Incoming Real-Time Order: ${ord.id} from ${ord.userName}!`);
+        } else if (prev.status !== ord.status) {
+          // Status updated by system/customer in real-time
+          newHighlights[ord.id] = 'updated';
+          hasChanges = true;
+          pushNotification('info', `Real-Time System Tracking: Order ${ord.id} modified to ${ord.status.toUpperCase()}`);
+        }
+      });
+
+      if (hasChanges) {
+        setHighlightedOrders(newHighlights);
+      }
+    }
+    setPrevOrders(orders);
+  }, [orders]);
+
+  // Real-time Admin search/filter/sort states
+  const [productSearch, setProductSearch] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('all');
+  const [productSortBy, setProductSortBy] = useState<'name' | 'price-asc' | 'price-desc' | 'status'>('name');
+
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
+
+  const [reservationSearch, setReservationSearch] = useState('');
+  const [reservationStatusFilter, setReservationStatusFilter] = useState('all');
+
+  const dismissHighlight = (orderId: string) => {
+    setHighlightedOrders(prev => {
+      const copy = { ...prev };
+      delete copy[orderId];
+      return copy;
+    });
+  };
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,6 +215,9 @@ export const AdminDashboard: React.FC = () => {
     setNewProductCategory(p.categoryId || 'cat-4');
     setNewProductPreparationTime(p.preparationTime || 15);
     setNewProductTags(p.tags ? p.tags.join(', ') : '');
+
+    // Smooth-scroll up to the top of the editing panel for flawless visibility
+    window.scrollTo({ top: 320, behavior: 'smooth' });
   };
 
   const saveEditedProduct = () => {
@@ -213,7 +268,7 @@ export const AdminDashboard: React.FC = () => {
                 activeTab === 'menu' ? 'bg-gold-500 border-gold-500 text-luxury-950 font-bold' : 'border-gold-900/35 text-gold-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              Products CRUD
+              Product Editing & Menu
             </button>
             <button 
               onClick={() => setActiveTab('orders')} 
@@ -221,7 +276,7 @@ export const AdminDashboard: React.FC = () => {
                 activeTab === 'orders' ? 'bg-gold-500 border-gold-500 text-luxury-950 font-bold' : 'border-gold-900/35 text-gold-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              Orders ({orders.length})
+              Order Dispatch & Queue ({orders.length})
             </button>
             <button 
               onClick={() => setActiveTab('reservations')} 
@@ -728,11 +783,81 @@ export const AdminDashboard: React.FC = () => {
 
               {/* Product Listing CRUD Table */}
               <div className="lg:col-span-8 p-6 rounded-2xl border border-gold-500/15 bg-[#12100e] overflow-hidden">
-                <div className="flex justify-between items-center border-b border-gold-900/15 pb-4 mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gold-900/15 pb-4 mb-4 gap-3">
                   <h3 className="font-serif text-lg font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                     <Layers className="h-5 w-5 text-gold-500" />
                     Live Database Specialties ({products.length})
                   </h3>
+                  {/* Active query stats */}
+                  {(productSearch || productCategoryFilter !== 'all') && (
+                    <span className="text-[10px] bg-gold-900/15 text-gold-400 border border-gold-500/20 px-2 py-1 rounded">
+                      Filtered: {
+                        products.filter(p => {
+                          const matchesSearch = p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+                                                p.id.toLowerCase().includes(productSearch.toLowerCase()) ||
+                                                (p.tags && p.tags.some(t => t.toLowerCase().includes(productSearch.toLowerCase())));
+                          const matchesCategory = productCategoryFilter === 'all' || p.categoryId === productCategoryFilter;
+                          return matchesSearch && matchesCategory;
+                        }).length
+                      } items found
+                    </span>
+                  )}
+                </div>
+
+                {/* Powerful Custom Search & Select Filtering Toolbar */}
+                <div className="mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-[#0a0807] rounded-xl border border-gold-900/10">
+                  
+                  {/* Search Bar Block with clear trigger */}
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gold-500/60">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="Search name or tag..." 
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="w-full pl-8 pr-7 py-2 rounded-lg border border-gold-900/20 bg-luxury-950 text-[10px] text-white focus:outline-none focus:border-gold-500 placeholder:text-zinc-650"
+                    />
+                    {productSearch && (
+                      <button 
+                        onClick={() => setProductSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white text-[9px] font-bold"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Category Filter select */}
+                  <select 
+                    value={productCategoryFilter}
+                    onChange={(e) => setProductCategoryFilter(e.target.value)}
+                    className="px-2 py-2 rounded-lg border border-gold-900/20 bg-luxury-950 text-[10px] text-white/90 focus:outline-none focus:border-gold-500 cursor-pointer"
+                  >
+                    <option value="all">All Category Rooms ({products.length})</option>
+                    {categories.map(cat => {
+                      const count = products.filter(p => p.categoryId === cat.id).length;
+                      return (
+                        <option key={cat.id} value={cat.id}>{cat.name} ({count})</option>
+                      );
+                    })}
+                  </select>
+
+                  {/* Sort parameter selector */}
+                  <select 
+                    value={productSortBy}
+                    onChange={(e: any) => setProductSortBy(e.target.value)}
+                    className="px-2 py-2 rounded-lg border border-gold-900/20 bg-luxury-950 text-[10px] text-white/90 focus:outline-none focus:border-gold-500 cursor-pointer"
+                  >
+                    <option value="name">Alphabetical (A - Z)</option>
+                    <option value="price-asc">Price &bull; Ascending</option>
+                    <option value="price-desc">Price &bull; Majestic High</option>
+                    <option value="status">Current Stock State</option>
+                  </select>
+
                 </div>
 
                 <div className="overflow-x-auto text-xs">
@@ -747,7 +872,21 @@ export const AdminDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {products.map(p => (
+                      {products
+                        .filter(p => {
+                          const matchesSearch = p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+                                                p.id.toLowerCase().includes(productSearch.toLowerCase()) ||
+                                                (p.tags && p.tags.some(t => t.toLowerCase().includes(productSearch.toLowerCase())));
+                          const matchesCategory = productCategoryFilter === 'all' || p.categoryId === productCategoryFilter;
+                          return matchesSearch && matchesCategory;
+                        })
+                        .sort((a, b) => {
+                          if (productSortBy === 'price-asc') return a.price - b.price;
+                          if (productSortBy === 'price-desc') return b.price - a.price;
+                          if (productSortBy === 'status') return a.status.localeCompare(b.status);
+                          return a.name.localeCompare(b.name);
+                        })
+                        .map(p => (
                         <motion.tr 
                           key={p.id} 
                           className="border-b border-gold-900/5 last:border-0 hover:bg-luxury-950/40"
@@ -814,43 +953,224 @@ export const AdminDashboard: React.FC = () => {
                 Active Corporate Orders Live Queue ({orders.length})
               </h3>
 
-              <div className="space-y-6">
-                {orders.map(ord => (
-                  <motion.div 
-                    key={ord.id} 
-                    className="p-4 border border-gold-900/15 bg-luxury-950/50 rounded-xl"
-                    whileHover={{ scale: 1.005, borderColor: "rgba(197, 160, 89, 0.45)", backgroundColor: "rgba(18, 16, 14, 0.95)" }}
-                    transition={{ type: "tween", duration: 0.12 }}
+              {/* Real-time sync and simulation control deck */}
+              <div className="mb-6 p-4 rounded-xl border border-gold-900/15 bg-[#0a0807] flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="max-w-xl">
+                  <h4 className="font-serif text-[12px] font-bold text-[#C5A059] uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Live Gastronomic Simulator Suite
+                  </h4>
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    Demonstrate L'Olympe's real-time visual highlight alerts instantly. Click to simulate consumer checkouts or trigger automated system status updates to observe live golds, glows, and bouncing flags.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={async () => {
+                      if (products.length === 0) {
+                        pushNotification('warning', 'Please restore default menu items to simulate checkout.');
+                        return;
+                      }
+                      const randomProduct = products[Math.floor(Math.random() * products.length)];
+                      const id = 'ord-' + (1000 + orders.length + 1);
+                      const mockOrder: Order = {
+                        id,
+                        userId: `user-sim-${Date.now().toString().slice(-4)}`,
+                        userName: ["Duchess Isabella", "Lord Archibold", "Baron Robert", "Lady Vivienne", "Sir Winston Watson"][Math.floor(Math.random() * 5)],
+                        userEmail: `vip-${Math.floor(Math.random() * 900)}@ambrosia.vip`,
+                        items: [
+                          {
+                            productId: randomProduct.id,
+                            productName: randomProduct.name,
+                            price: randomProduct.price,
+                            quantity: Math.floor(Math.random() * 2) + 1,
+                            image: randomProduct.image
+                          }
+                        ],
+                        subtotal: randomProduct.price,
+                        discountAmount: 0,
+                        tax: Math.round(randomProduct.price * 0.08 * 10) / 10,
+                        deliveryFee: 15,
+                        total: Math.round((randomProduct.price * 1.08 + 15) * 10) / 10,
+                        status: 'pending',
+                        address: ["Plaza Athénée, 25 Avenue Montaigne, 75008 Paris", "Le Meurice, 228 Rue de Rivoli, 75001 Paris", "Villa Majestic, 30 Rue la Pérouse, 75116 Paris"][Math.floor(Math.random() * 3)],
+                        phone: "+33 " + Math.floor(600000000 + Math.random() * 100000000),
+                        paymentMethod: ["Amex Centurion Black", "VVIP Saffron Platinum", "Cash on Gold Tray"][Math.floor(Math.random() * 3)],
+                        trackingNumber: 'TRK-' + Math.floor(10000000 + Math.random() * 90000000),
+                        createdAt: new Date().toISOString()
+                      };
+                      try {
+                        const response = await fetch('/api/orders', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(mockOrder)
+                        });
+                        if (response.ok) {
+                          pushNotification('success', `Simulated Order ${id} submitted on behalf of customer!`);
+                          fetchServerState();
+                        }
+                      } catch (err) {
+                        console.error("Simulation order creation failed:", err);
+                      }
+                    }}
+                    className="p-2 px-3 text-[10px] font-bold bg-[#C5A059] hover:bg-[#b08b47] text-luxury-950 rounded-lg shadow transition duration-200 cursor-pointer flex items-center gap-1"
                   >
-                    <div className="block sm:flex justify-between border-b border-gold-900/10 pb-3 mb-3 text-xs">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-zinc-100 font-bold">{ord.id}</span>
-                          <span className="text-zinc-650">• Secure Tracking: <span className="font-mono text-gold-400">{ord.trackingNumber}</span></span>
-                        </div>
-                        <p className="text-[10px] text-zinc-505 font-medium mt-0.5">Purchaser: <span className="text-zinc-300">{ord.userName} ({ord.userEmail})</span></p>
-                        <p className="text-[10px] text-zinc-505 font-medium">Destination: <span className="text-zinc-300">{ord.address}</span> • Dial: <span className="text-gold-200">{ord.phone}</span></p>
-                      </div>
+                    <span>➕ Customer Checkout</span>
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (orders.length === 0) {
+                        pushNotification('warning', 'Place or simulate an order to trigger updates.');
+                        return;
+                      }
+                      const activeOrders = orders.filter(o => o.status !== 'cancelled' && o.status !== 'delivered');
+                      const orderToUpdate = activeOrders.length > 0 ? activeOrders[0] : orders[0];
+                      const statuses: Order['status'][] = ['pending', 'preparing', 'dispatched', 'delivered'];
+                      const currentIdx = statuses.indexOf(orderToUpdate.status);
+                      const nextStatus = currentIdx >= 0 && currentIdx < statuses.length - 1 ? statuses[currentIdx + 1] : 'pending';
 
-                      {/* State status switches update context immediately */}
-                      <div className="flex flex-col sm:items-end gap-2 mt-2 sm:mt-0 font-bold tracking-widest text-[9px]">
-                        <div className="flex gap-1.5 select-none text-[8px]">
-                          {['pending', 'preparing', 'dispatched', 'delivered', 'cancelled'].map((st: any) => (
-                            <button
-                              key={st}
-                              onClick={() => updateOrderStatus(ord.id, st)}
-                              className={`px-2 py-1 rounded transition uppercase ${
-                                ord.status === st 
-                                  ? 'bg-gold-500 text-luxury-950 font-bold' 
-                                  : 'bg-luxury-900 text-zinc-500 hover:text-white'
-                              }`}
-                            >
-                              {st}
-                            </button>
-                          ))}
+                      try {
+                        const response = await fetch(`/api/orders/${orderToUpdate.id}/status`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ status: nextStatus })
+                        });
+                        if (response.ok) {
+                          pushNotification('info', `Simulating system status jump: Order ${orderToUpdate.id} updated to ${nextStatus.toUpperCase()}`);
+                          fetchServerState();
+                        }
+                      } catch (err) {
+                        console.error("Simulation update failed:", err);
+                      }
+                    }}
+                    className="p-2 px-3 text-[10px] font-bold bg-zinc-900 border border-gold-900/30 text-gold-400 hover:text-white rounded-lg transition duration-200 cursor-pointer flex items-center gap-1"
+                  >
+                    <span>⚡ System Auto-Update</span>
+                  </button>
+                  {Object.keys(highlightedOrders).length > 0 && (
+                    <button
+                      onClick={() => setHighlightedOrders({})}
+                      className="p-2 px-3 text-[10px] font-bold bg-rose-950/40 text-rose-300 hover:bg-rose-900/40 rounded-lg border border-rose-500/20 transition duration-200 cursor-pointer"
+                    >
+                      Clear Highlights ({Object.keys(highlightedOrders).length})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Advanced Realtime Orders Filter Toolbar */}
+              <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-luxury-950/40 rounded-xl border border-gold-900/10">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gold-400 font-bold text-[10px]">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Search guest name, Order ID, or tracking code..."
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    className="w-full pl-8 pr-7 py-2 rounded-lg border border-gold-900/25 bg-[#0a0807] text-[10px] text-white focus:outline-none focus:border-gold-500 placeholder:text-zinc-650"
+                  />
+                  {orderSearch && (
+                    <button
+                      onClick={() => setOrderSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-550 hover:text-white font-bold text-[10px]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider whitespace-nowrap">Filter Status:</span>
+                  <select
+                    value={orderStatusFilter}
+                    onChange={(e) => setOrderStatusFilter(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border border-gold-900/25 bg-[#0a0807] text-[10px] text-white/90 focus:outline-none focus:border-gold-500 cursor-pointer"
+                  >
+                    <option value="all">Display All Order Statuses ({orders.length})</option>
+                    <option value="pending">Pending Queue ({orders.filter(o => o.status === 'pending').length})</option>
+                    <option value="preparing">Preparing Gourmet Table Kitchen ({orders.filter(o => o.status === 'preparing').length})</option>
+                    <option value="dispatched">Dispatched Luxury Carriage ({orders.filter(o => o.status === 'dispatched').length})</option>
+                    <option value="delivered">Delivered Feast ({orders.filter(o => o.status === 'delivered').length})</option>
+                    <option value="cancelled">Cancelled Transactions ({orders.filter(o => o.status === 'cancelled').length})</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {orders
+                  .filter(ord => {
+                    const matchesSearch = ord.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                                          ord.userName.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                                          ord.userEmail.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                                          ord.trackingNumber.toLowerCase().includes(orderSearch.toLowerCase());
+                    const matchesStatus = orderStatusFilter === 'all' || ord.status === orderStatusFilter;
+                    return matchesSearch && matchesStatus;
+                  })
+                  .map(ord => {
+                    const hasGlow = highlightedOrders[ord.id];
+                    return (
+                    <motion.div 
+                      key={ord.id} 
+                      className={`p-4 border transition-all duration-300 relative rounded-xl ${
+                        hasGlow === 'new'
+                          ? 'border-amber-500/80 bg-amber-950/20 shadow-[0_0_20px_rgba(242,125,38,0.25)] animate-pulse'
+                          : hasGlow === 'updated'
+                          ? 'border-yellow-600/60 bg-yellow-950/15 shadow-[0_0_15px_rgba(197,160,89,0.15)] animate-pulse'
+                          : 'border-gold-900/15 bg-luxury-950/50'
+                      }`}
+                      whileHover={{ scale: 1.005, borderColor: "rgba(197, 160, 89, 0.45)", backgroundColor: "rgba(18, 16, 14, 0.95)" }}
+                      transition={{ type: "tween", duration: 0.12 }}
+                    >
+                      <div className="block sm:flex justify-between border-b border-gold-900/10 pb-3 mb-3 text-xs">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-zinc-100 font-bold">{ord.id}</span>
+                            <span className="text-zinc-650">• Secure Tracking: <span className="font-mono text-gold-400">{ord.trackingNumber}</span></span>
+                            {hasGlow && (
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
+                                hasGlow === 'new' 
+                                  ? 'bg-[#F27D26] text-white animate-bounce' 
+                                  : 'bg-[#C5A059] text-luxury-950'
+                              }`}>
+                                <span className="h-1 w-1 rounded-full bg-white animate-ping" />
+                                {hasGlow === 'new' ? 'LIVE NEW ORDER' : 'CUSTOMER/SYSTEM UPDATE'}
+                              </span>
+                            )}
+                            {hasGlow && (
+                              <button
+                                onClick={() => dismissHighlight(ord.id)}
+                                className="text-[9px] text-[#C5A059] hover:text-white underline cursor-pointer select-none font-bold"
+                              >
+                                Dismiss Highlight
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-zinc-505 font-medium mt-0.5">Purchaser: <span className="text-zinc-300">{ord.userName} ({ord.userEmail})</span></p>
+                          <p className="text-[10px] text-zinc-505 font-medium">Destination: <span className="text-zinc-300">{ord.address}</span> • Dial: <span className="text-gold-200">{ord.phone}</span></p>
+                        </div>
+
+                        {/* State status switches update context immediately */}
+                        <div className="flex flex-col sm:items-end gap-2 mt-2 sm:mt-0 font-bold tracking-widest text-[9px]">
+                          <div className="flex gap-1.5 select-none text-[8px]">
+                            {['pending', 'preparing', 'dispatched', 'delivered', 'cancelled'].map((st: any) => (
+                              <button
+                                key={st}
+                                onClick={() => {
+                                  updateOrderStatus(ord.id, st);
+                                  dismissHighlight(ord.id);
+                                }}
+                                className={`px-2 py-1 rounded transition uppercase ${
+                                  ord.status === st 
+                                    ? 'bg-gold-500 text-luxury-950 font-bold' 
+                                    : 'bg-luxury-900 text-zinc-500 hover:text-white'
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
                     {/* Ordered items list documentation */}
                     <div className="space-y-1.5 mb-3">
@@ -868,7 +1188,8 @@ export const AdminDashboard: React.FC = () => {
                     </div>
 
                   </motion.div>
-                ))}
+                );
+              })}
               </div>
             </div>
           )}
@@ -881,63 +1202,123 @@ export const AdminDashboard: React.FC = () => {
                 Table Reservations Manager Grid ({reservations.length})
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
-                {reservations.map(res => (
-                  <motion.div 
-                    key={res.id} 
-                    className="p-4 border border-gold-900/15 bg-luxury-950/40 rounded-xl relative"
-                    whileHover={{ scale: 1.006, borderColor: "rgba(197, 160, 89, 0.45)", backgroundColor: "rgba(18, 16, 14, 0.95)" }}
-                    transition={{ type: "tween", duration: 0.12 }}
+              {/* Advanced Realtime Reservations Filter Toolbar */}
+              <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-luxury-950/40 rounded-xl border border-gold-900/10">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gold-400 font-bold text-[10px]">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Search guest, area, or booking ID..."
+                    value={reservationSearch}
+                    onChange={(e) => setReservationSearch(e.target.value)}
+                    className="w-full pl-8 pr-7 py-2 rounded-lg border border-gold-900/25 bg-[#0a0807] text-[10px] text-white focus:outline-none focus:border-gold-500 placeholder:text-zinc-650"
+                  />
+                  {reservationSearch && (
+                    <button
+                      onClick={() => setReservationSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-550 hover:text-white font-bold text-[10px]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider whitespace-nowrap">Filter Area or Status:</span>
+                  <select
+                    value={reservationStatusFilter}
+                    onChange={(e) => setReservationStatusFilter(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border border-gold-900/25 bg-[#0a0807] text-[10px] text-white/90 focus:outline-none focus:border-gold-500 cursor-pointer"
                   >
-                    
-                    <div className="flex justify-between items-start mb-2 pb-2 border-b border-gold-900/10">
-                      <div>
-                        <span className="font-mono text-[9px] font-bold text-gold-500 uppercase block">{res.id}</span>
-                        <span className="block font-serif text-sm font-bold text-white mt-0.5">{res.userName}</span>
-                        <span className="block text-[10px] text-zinc-650">{res.userEmail} • Phone: {res.phone}</span>
-                      </div>
-                      
-                      <div className="text-right flex flex-col items-end gap-1.5 font-bold tracking-widest text-[9px]">
-                        <span className={`px-2.5 py-1 rounded font-bold uppercase ${
-                          res.status === 'confirmed' ? 'bg-emerald-950 text-emerald-400' :
-                          res.status === 'cancelled' ? 'bg-rose-950 text-rose-300' : 'bg-amber-950 text-amber-400'
-                        }`}>
-                          {res.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Specifications detail */}
-                    <div className="space-y-1 mb-4">
-                      <div className="flex justify-between text-[11px]"><span className="text-zinc-500">Chamber Zone:</span><span className="font-bold text-gold-400 uppercase tracking-wider">{res.area}</span></div>
-                      <div className="flex justify-between text-[11px]"><span className="text-zinc-500">Schedule Clock:</span><span className="font-semibold text-white">{res.date} at {res.time}</span></div>
-                      <div className="flex justify-between text-[11px]"><span className="text-zinc-500">Accompany Party:</span><span className="font-semibold text-white">{res.partySize} VIP Guests</span></div>
-                      {res.notes && (
-                        <div className="mt-2 p-1.5 bg-black/20 rounded border border-gold-900/10 text-[10px] italic text-zinc-550 leading-relaxed">
-                          "{res.notes}"
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Operational controls */}
-                    <div className="pt-2 border-t border-gold-900/10 flex gap-2">
-                      <button 
-                        onClick={() => updateReservationStatus(res.id, 'confirmed')}
-                        className="flex-1 py-1.5 bg-emerald-900 hover:bg-emerald-950 text-emerald-300 text-[9px] font-bold uppercase tracking-wider rounded transition cursor-pointer"
-                      >
-                        Confirm Booking
-                      </button>
-                      <button 
-                        onClick={() => updateReservationStatus(res.id, 'cancelled')}
-                        className="flex-1 py-1.5 bg-rose-900 hover:bg-rose-950 text-rose-350 text-[9px] font-bold uppercase tracking-wider rounded transition cursor-pointer"
-                      >
-                        Cancel Booking
-                      </button>
-                    </div>
-
-                  </motion.div>
-                ))}
+                    <option value="all">Display All Booking States ({reservations.length})</option>
+                    <option value="pending">Pending Review ({reservations.filter(r => r.status === 'pending').length})</option>
+                    <option value="confirmed">Confirmed Reservations ({reservations.filter(r => r.status === 'confirmed').length})</option>
+                    <option value="cancelled">Cancelled Bookings ({reservations.filter(r => r.status === 'cancelled').length})</option>
+                  </select>
+                </div>
               </div>
+
+              {reservations.filter(res => {
+                const matchesSearch = res.id.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+                                      res.userName.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+                                      res.userEmail.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+                                      res.phone.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+                                      res.area.toLowerCase().includes(reservationSearch.toLowerCase());
+                const matchesStatus = reservationStatusFilter === 'all' || res.status === reservationStatusFilter;
+                return matchesSearch && matchesStatus;
+              }).length === 0 ? (
+                <div className="text-center py-10 border border-dashed border-gold-900/10 rounded-xl bg-black/10">
+                  <p className="text-zinc-500 text-xs italic">No matching VIP reservations found with current constraints.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                  {reservations
+                    .filter(res => {
+                      const matchesSearch = res.id.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+                                            res.userName.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+                                            res.userEmail.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+                                            res.phone.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+                                            res.area.toLowerCase().includes(reservationSearch.toLowerCase());
+                      const matchesStatus = reservationStatusFilter === 'all' || res.status === reservationStatusFilter;
+                      return matchesSearch && matchesStatus;
+                    })
+                    .map(res => (
+                      <motion.div 
+                        key={res.id} 
+                        className="p-4 border border-gold-900/15 bg-luxury-950/40 rounded-xl relative"
+                        whileHover={{ scale: 1.006, borderColor: "rgba(197, 160, 89, 0.45)", backgroundColor: "rgba(18, 16, 14, 0.95)" }}
+                        transition={{ type: "tween", duration: 0.12 }}
+                      >
+                        
+                        <div className="flex justify-between items-start mb-2 pb-2 border-b border-gold-900/10">
+                          <div>
+                            <span className="font-mono text-[9px] font-bold text-gold-500 uppercase block">{res.id}</span>
+                            <span className="block font-serif text-sm font-bold text-white mt-0.5">{res.userName}</span>
+                            <span className="block text-[10px] text-zinc-650">{res.userEmail} • Phone: {res.phone}</span>
+                          </div>
+                          
+                          <div className="text-right flex flex-col items-end gap-1.5 font-bold tracking-widest text-[9px]">
+                            <span className={`px-2.5 py-1 rounded font-bold uppercase ${
+                              res.status === 'confirmed' ? 'bg-emerald-950 text-emerald-400' :
+                              res.status === 'cancelled' ? 'bg-rose-950 text-rose-300' : 'bg-amber-950 text-amber-400'
+                            }`}>
+                              {res.status}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Specifications detail */}
+                        <div className="space-y-1 mb-4">
+                          <div className="flex justify-between text-[11px]"><span className="text-zinc-500">Chamber Zone:</span><span className="font-bold text-gold-400 uppercase tracking-wider">{res.area}</span></div>
+                          <div className="flex justify-between text-[11px]"><span className="text-zinc-500">Schedule Clock:</span><span className="font-semibold text-white">{res.date} at {res.time}</span></div>
+                          <div className="flex justify-between text-[11px]"><span className="text-zinc-500">Accompany Party:</span><span className="font-semibold text-white">{res.partySize} VIP Guests</span></div>
+                          {res.notes && (
+                            <div className="mt-2 p-1.5 bg-black/20 rounded border border-gold-900/10 text-[10px] italic text-zinc-550 leading-relaxed">
+                              "{res.notes}"
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Operational controls */}
+                        <div className="pt-2 border-t border-gold-900/10 flex gap-2">
+                          <button 
+                            onClick={() => updateReservationStatus(res.id, 'confirmed')}
+                            className="flex-1 py-1.5 bg-emerald-900 hover:bg-emerald-950 text-emerald-300 text-[9px] font-bold uppercase tracking-wider rounded transition cursor-pointer"
+                          >
+                            Confirm Booking
+                          </button>
+                          <button 
+                            onClick={() => updateReservationStatus(res.id, 'cancelled')}
+                            className="flex-1 py-1.5 bg-rose-900 hover:bg-rose-950 text-rose-350 text-[9px] font-bold uppercase tracking-wider rounded transition cursor-pointer"
+                          >
+                            Cancel Booking
+                          </button>
+                        </div>
+
+                      </motion.div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
 

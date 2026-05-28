@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Product } from '../types';
-import { Search, Heart, Info, ShoppingBag, Flame, Clock, Plus, Minus } from 'lucide-react';
+import { Search, Heart, Info, ShoppingBag, Flame, Clock, Plus, Minus, X, SlidersHorizontal, Star, Euro, RefreshCw } from 'lucide-react';
 
 export const FeaturedMenu: React.FC = () => {
   const { products, categories, addToCart, wishlist, toggleWishlist } = useApp();
@@ -9,6 +9,11 @@ export const FeaturedMenu: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'rating'>('default');
   const [activeDetailProduct, setActiveDetailProduct] = useState<Product | null>(null);
+  
+  // Advanced filters state
+  const [maxPrice, setMaxPrice] = useState<number>(1000);
+  const [minRating, setMinRating] = useState<number>(0);
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
   
   // Custom multi-quantities map to allow selecting quantities before adding to cart!
   const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
@@ -21,13 +26,34 @@ export const FeaturedMenu: React.FC = () => {
     });
   };
 
+  // Pre-configured suggestions
+  const suggestionChips = [
+    { label: '✦ Truffle', val: 'truffle' },
+    { label: '✦ Caviar', val: 'caviar' },
+    { label: '✦ A5 Wagyu', val: 'wagyu' },
+    { label: '✦ Gold Foil', val: 'gold' },
+    { label: '✦ Foie Gras', val: 'foie' },
+    { label: '✦ Soufflé', val: 'soufflé' }
+  ];
+
+  // Reset all filters to default
+  const resetAllFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('all');
+    setSortBy('default');
+    setMaxPrice(1000);
+    setMinRating(0);
+  };
+
   // 1. Filter Foods
   const filteredProducts = products.filter(p => {
     const matchesCategory = selectedCategory === 'all' || p.categoryId === selectedCategory;
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           p.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCategory && matchesSearch;
+    const matchesPrice = p.price <= maxPrice;
+    const matchesRating = p.rating >= minRating;
+    return matchesCategory && matchesSearch && matchesPrice && matchesRating;
   });
 
   // 2. Sort Foods
@@ -62,7 +88,7 @@ export const FeaturedMenu: React.FC = () => {
         <div className="mb-12 space-y-6">
           <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
             
-            {/* Realtime Search Bar */}
+            {/* Realtime Search Bar with clear button */}
             <div className="relative w-full md:max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
               <input 
@@ -70,24 +96,182 @@ export const FeaturedMenu: React.FC = () => {
                 placeholder="Search truffle, caviar, wagyu steak..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/10 bg-white/5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-[#F27D26] transition-colors"
+                className="w-full pl-10 pr-10 py-3 rounded-xl border border-white/10 bg-white/5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-[#F27D26] focus:ring-1 focus:ring-[#F27D26]/30 transition-all duration-300"
               />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </div>
 
-            {/* Sort Dropdown */}
-            <div className="flex items-center gap-2.5 w-full md:w-auto">
-              <span className="text-xs text-white/50 font-medium tracking-wide whitespace-nowrap">Sort by:</span>
-              <select 
-                value={sortBy} 
-                onChange={(e: any) => setSortBy(e.target.value)}
-                className="w-full md:w-auto px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/5 text-xs text-white/80 font-semibold focus:outline-none focus:border-[#C5A059] transition-colors cursor-pointer"
+            {/* Filter and Sort Deck Controls */}
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              
+              {/* Show Filters Button with indicator */}
+              <button 
+                onClick={() => setShowFiltersPanel(!showFiltersPanel)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-medium cursor-pointer transition-all ${
+                  showFiltersPanel || maxPrice < 1000 || minRating > 0
+                    ? 'border-[#F27D26] bg-[#F27D26]/10 text-white shadow-[0_4px_12px_rgba(242,125,38,0.15)]'
+                    : 'border-white/10 bg-white/5 text-white/70 hover:text-white hover:bg-white/10'
+                }`}
               >
-                <option value="default">Default Curated Selection</option>
-                <option value="price-asc">Price: Low to High</option>
-                <option value="price-desc">Price: Majestic High to Low</option>
-                <option value="rating">Critic Rating Points</option>
-              </select>
+                <SlidersHorizontal className="h-3.5 w-3.5 text-[#C5A059]" />
+                <span>Filters &amp; Price Range</span>
+                {(maxPrice < 1000 || minRating > 0) && (
+                  <span className="w-2 h-2 rounded-full bg-[#F27D26] inline-block animate-ping" />
+                )}
+              </button>
+
+              {/* Reset Filters Shortcut if anything changed */}
+              {(searchQuery || selectedCategory !== 'all' || sortBy !== 'default' || maxPrice < 1000 || minRating > 0) && (
+                <button
+                  onClick={resetAllFilters}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#C5A059]/30 bg-[#C5A059]/5 hover:bg-[#C5A059]/20 text-xs font-bold text-[#C5A059] cursor-pointer transition-all"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span>Reset Filters</span>
+                </button>
+              )}
+
+              {/* Luxury Sort Select Box */}
+              <div className="flex items-center gap-2.5 flex-1 md:flex-initial">
+                <span className="text-xs text-white/50 font-medium tracking-wide whitespace-nowrap hidden sm:inline">Sort by:</span>
+                <select 
+                  value={sortBy} 
+                  onChange={(e: any) => setSortBy(e.target.value)}
+                  className="w-full md:w-auto px-4 py-2.5 rounded-xl border border-white/10 bg-luxury-950 text-xs text-white/90 font-semibold focus:outline-none focus:border-[#C5A059] focus:ring-1 focus:ring-[#C5A059]/30 transition-all cursor-pointer hover:border-white/20"
+                >
+                  <option value="default">Default Curated Selection</option>
+                  <option value="price-asc">Price &bull; Low to High</option>
+                  <option value="price-desc">Price &bull; Majestic High to Low</option>
+                  <option value="rating">Critic Rating Points (&ge; 4.8)</option>
+                </select>
+              </div>
+
             </div>
+
+          </div>
+
+          {/* Collapsible Fine Filters Deck */}
+          {showFiltersPanel && (
+            <div className="p-5 sm:p-6 rounded-2xl border border-[#C5A059]/25 bg-gradient-to-br from-[#0f0e0d] to-[#070606] shadow-2xl animate-fadeIn space-y-6">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                {/* Max Price Range Slider */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-white/70 tracking-widest uppercase flex items-center gap-1.5">
+                      <Euro className="h-3.5 w-3.5 text-[#C5A059]" />
+                      Max Budget Ceiling
+                    </span>
+                    <span className="text-xs font-mono font-bold text-[#C5A059] bg-[#C5A059]/10 px-2 py-0.5 rounded">
+                      &le; €{maxPrice === 1000 ? '1,000+' : maxPrice}
+                    </span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="30" 
+                    max="1000" 
+                    step="10"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(Number(e.target.value))}
+                    className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#F27D26] hover:accent-[#F27D26]/90 focus:outline-none"
+                  />
+                  <div className="flex justify-between text-[10px] text-white/40 font-mono mt-1.5">
+                    <span>€30</span>
+                    <span>€250</span>
+                    <span>€500</span>
+                    <span>€750</span>
+                    <span>€1,000+ (No Limit)</span>
+                  </div>
+                </div>
+
+                {/* Minimum Critic Score Rating */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-white/70 tracking-widest uppercase flex items-center gap-1.5">
+                      <Star className="h-3.5 w-3.5 text-[#F27D26]" />
+                      Minimum Gastronomic Score
+                    </span>
+                    <span className="text-xs font-mono font-bold text-[#F27D26] bg-[#F27D26]/10 px-2 py-0.5 rounded">
+                      {minRating === 0 ? 'All Scores' : `★ ${minRating.toFixed(1)}+`}
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-4 gap-2">
+                    {[0, 4.5, 4.7, 4.9].map((rating) => (
+                      <button
+                        key={rating}
+                        onClick={() => setMinRating(rating)}
+                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                          minRating === rating
+                            ? 'bg-[#F27D26]/10 border-[#F27D26] text-white font-black'
+                            : 'bg-white/5 border-white/10 text-white/60 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        {rating === 0 ? 'Show All' : `★ ${rating.toFixed(1)}+`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Fast Reset and Filters Info Footer */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-white/5 items-center justify-between">
+                <p className="text-[10px] text-white/45 tracking-wide italic">
+                  * Showing recipes containing fresh Piedmont white truffles, Imperial Caspian Osetra caviar, and A5 Miyazaki Kobe.
+                </p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => { setMaxPrice(1000); setMinRating(0); }}
+                    className="px-4 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-bold tracking-widest text-[#C5A059] uppercase transition-colors"
+                  >
+                    Clear Filter Locks
+                  </button>
+                  <button 
+                    onClick={() => setShowFiltersPanel(false)}
+                    className="px-4 py-1.5 bg-[#C5A059]/10 hover:bg-[#C5A059]/20 rounded-lg text-[10px] font-bold tracking-widest text-white uppercase transition-colors"
+                  >
+                    Confirm selection
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* Quick Suggestions Tags & Metric Row */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+            
+            {/* suggestion search tags */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[9px] font-bold text-white/40 tracking-widest uppercase mr-1">Trending:</span>
+              {suggestionChips.map(chip => (
+                <button
+                  key={chip.val}
+                  onClick={() => setSearchQuery(chip.val)}
+                  className={`px-3 py-1 rounded-full text-[9px] font-semibold tracking-wider transition-all border cursor-pointer ${
+                    searchQuery.toLowerCase() === chip.val.toLowerCase()
+                      ? 'bg-[#C5A059] border-[#C5A059] text-luxury-950 font-bold'
+                      : 'bg-[#151311] border-white/5 text-white/50 hover:text-white hover:border-white/20'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+
+            {/* found counter */}
+            <span className="text-[10px] sm:text-xs font-mono font-semibold text-zinc-500 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5">
+              Refined Menu Results: <span className="text-[#C5A059] font-bold">{sortedProducts.length}</span> / <span className="text-white/60">{products.length}</span>
+            </span>
 
           </div>
 
