@@ -276,7 +276,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (response.ok) {
         const data = await response.json();
         
-        // Merge with local backups to prevent ephemeral serverless wipes of client's database
+        // Safeguard for Vercel/serverless environments when Sanity.io is not active
+        const isSanityConfigured = data.sanityConfigured;
+        if (!isSanityConfigured) {
+          const hasCustomEdits = localStorage.getItem('luxebite_has_custom_updates') === 'true';
+          const localProductsStr = localStorage.getItem('luxebite_products');
+          const localCategoriesStr = localStorage.getItem('luxebite_categories');
+          const localOrdersStr = localStorage.getItem('luxebite_orders');
+          const localReservationsStr = localStorage.getItem('luxebite_reservations');
+          const localSettingsStr = localStorage.getItem('luxebite_settings');
+
+          if (hasCustomEdits) {
+            const localProducts = localProductsStr ? JSON.parse(localProductsStr) : [];
+            const localCategories = localCategoriesStr ? JSON.parse(localCategoriesStr) : [];
+            const localOrders = localOrdersStr ? JSON.parse(localOrdersStr) : [];
+            const localReservations = localReservationsStr ? JSON.parse(localReservationsStr) : [];
+            const localSettings = localSettingsStr ? JSON.parse(localSettingsStr) : null;
+
+            // Maintain local visual client state
+            if (localProducts.length > 0) setProducts(localProducts);
+            if (localCategories.length > 0) setCategories(localCategories);
+            if (localOrders.length > 0) setOrders(localOrders);
+            if (localReservations.length > 0) setReservations(localReservations);
+            if (localSettings) setSettings(localSettings);
+
+            // Sync backend to match our client master data
+            await fetch('/api/state/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                products: localProducts.length > 0 ? localProducts : data.products,
+                categories: localCategories.length > 0 ? localCategories : data.categories,
+                orders: localOrders.length > 0 ? localOrders : data.orders,
+                reservations: localReservations.length > 0 ? localReservations : data.reservations,
+                settings: localSettings || data.settings
+              })
+            });
+            return; // Exit so the server's clean default values do not override
+          }
+        }
+        
+        // Standard (or Sanity-synced) loading path
         if (data.products && data.products.length > 0) {
           setProducts(data.products);
           localStorage.setItem('luxebite_products', JSON.stringify(data.products));
@@ -287,41 +327,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         
         if (data.orders) {
-          const localOrdersStr = localStorage.getItem('luxebite_orders');
-          if (data.orders.length === 0 && localOrdersStr) {
-            const localOrders = JSON.parse(localOrdersStr);
-            if (localOrders.length > 0) {
-              setOrders(localOrders);
-              // Sync back to ephemeral server database so backend knows about them
-              localOrders.forEach(async (ord: Order) => {
-                try {
-                  await fetch('/api/orders', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ord)
-                  });
-                } catch (e) {
-                  console.error("Delayed order syner failed", e);
-                }
-              });
-            }
-          } else {
-            setOrders(data.orders);
-            localStorage.setItem('luxebite_orders', JSON.stringify(data.orders));
-          }
+          setOrders(data.orders);
+          localStorage.setItem('luxebite_orders', JSON.stringify(data.orders));
         }
 
         if (data.reservations) {
-          const localResStr = localStorage.getItem('luxebite_reservations');
-          if (data.reservations.length === 0 && localResStr) {
-            const localRes = JSON.parse(localResStr);
-            if (localRes.length > 0) {
-              setReservations(localRes);
-            }
-          } else {
-            setReservations(data.reservations);
-            localStorage.setItem('luxebite_reservations', JSON.stringify(data.reservations));
-          }
+          setReservations(data.reservations);
+          localStorage.setItem('luxebite_reservations', JSON.stringify(data.reservations));
         }
 
         if (data.settings && Object.keys(data.settings).length > 0) {
@@ -486,46 +498,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       rating: 5.0,
       ratingCount: 1
     };
+    const updatedProducts = [newProduct, ...products];
+    setProducts(updatedProducts);
+    localStorage.setItem('luxebite_products', JSON.stringify(updatedProducts));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('success', `Menu Expansion: "${newProduct.name}" deployed to public database.`);
+
     try {
-      const response = await fetch('/api/products', {
+      await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProduct)
       });
-      if (response.ok) {
-        pushNotification('success', `Menu Expansion: "${newProduct.name}" deployed to public database.`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
   };
 
   const updateProduct = async (id: string, updated: Partial<Product>) => {
+    const updatedProducts = products.map(p => p.id === id ? { ...p, ...updated } : p);
+    setProducts(updatedProducts);
+    localStorage.setItem('luxebite_products', JSON.stringify(updatedProducts));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('info', `Menu details refreshed for ID ${id}.`);
+
     try {
-      const response = await fetch(`/api/products/${id}`, {
+      await fetch(`/api/products/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-      if (response.ok) {
-        pushNotification('info', `Menu details refreshed for ID ${id}.`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
   };
 
   const deleteProduct = async (id: string) => {
+    const updatedProducts = products.filter(p => p.id !== id);
+    setProducts(updatedProducts);
+    localStorage.setItem('luxebite_products', JSON.stringify(updatedProducts));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('warning', `Removed product ID ${id} from public display.`);
+
     try {
-      const response = await fetch(`/api/products/${id}`, {
+      await fetch(`/api/products/${id}`, {
         method: 'DELETE'
       });
-      if (response.ok) {
-        pushNotification('warning', `Removed product ID ${id} from public display.`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
@@ -538,30 +559,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: 'cat-' + Date.now(),
       slug: category.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
     };
+    const updatedCategories = [...categories, newCategory];
+    setCategories(updatedCategories);
+    localStorage.setItem('luxebite_categories', JSON.stringify(updatedCategories));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('success', `Established menu division: "${newCategory.name}".`);
+
     try {
-      const response = await fetch('/api/categories', {
+      await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCategory)
       });
-      if (response.ok) {
-        pushNotification('success', `Established menu division: "${newCategory.name}".`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
   };
 
   const deleteCategory = async (id: string) => {
+    const updatedCategories = categories.filter(c => c.id !== id);
+    setCategories(updatedCategories);
+    localStorage.setItem('luxebite_categories', JSON.stringify(updatedCategories));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('warning', `Abolished category section ID ${id}.`);
+
     try {
-      const response = await fetch(`/api/categories/${id}`, {
+      await fetch(`/api/categories/${id}`, {
         method: 'DELETE'
       });
-      if (response.ok) {
-        pushNotification('warning', `Abolished category section ID ${id}.`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
@@ -663,36 +690,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
 
+    const updatedOrders = [newOrder, ...orders];
+    setOrders(updatedOrders);
+    localStorage.setItem('luxebite_orders', JSON.stringify(updatedOrders));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    setCart([]);
+    setActivePromoCode(null);
+    pushNotification('success', `Checkout Complete! Order ${newOrder.id} dispatched live to L'Olympe master kitchen.`);
+
     try {
-      const response = await fetch('/api/orders', {
+      await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newOrder)
       });
-      if (response.ok) {
-        setCart([]);
-        setActivePromoCode(null);
-        pushNotification('success', `Checkout Complete! Order ${newOrder.id} dispatched live to L'Olympe master kitchen.`);
-        fetchServerState();
-        return newOrder;
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
-    return null;
+    return newOrder;
   };
 
   const updateOrderStatus = async (orderId: string, status: Order['status']) => {
+    const updatedOrders = orders.map(o => o.id === orderId ? { ...o, status } : o);
+    setOrders(updatedOrders);
+    localStorage.setItem('luxebite_orders', JSON.stringify(updatedOrders));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('info', `Order ${orderId} status updated to: ${status.toUpperCase()}`);
+
     try {
-      const response = await fetch(`/api/orders/${orderId}/status`, {
+      await fetch(`/api/orders/${orderId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
-      if (response.ok) {
-        pushNotification('info', `Order ${orderId} status updated to: ${status.toUpperCase()}`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
@@ -719,16 +751,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
 
+    const updatedReservations = [newRes, ...reservations];
+    setReservations(updatedReservations);
+    localStorage.setItem('luxebite_reservations', JSON.stringify(updatedReservations));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('success', `Reservation Registered: ${details.date} • ${details.time} in ${details.area}. Please await elite review.`);
+
     try {
-      const response = await fetch('/api/reservations', {
+      await fetch('/api/reservations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRes)
       });
-      if (response.ok) {
-        pushNotification('success', `Reservation Registered: ${details.date} • ${details.time} in ${details.area}. Please await elite review.`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
@@ -737,16 +772,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateReservationStatus = async (id: string, status: Reservation['status']) => {
+    const updatedReservations = reservations.map(r => r.id === id ? { ...r, status } : r);
+    setReservations(updatedReservations);
+    localStorage.setItem('luxebite_reservations', JSON.stringify(updatedReservations));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('success', `Reservation ID ${id} set to: ${status.toUpperCase()}.`);
+
     try {
-      const response = await fetch(`/api/reservations/${id}/status`, {
+      await fetch(`/api/reservations/${id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
-      if (response.ok) {
-        pushNotification('success', `Reservation ID ${id} set to: ${status.toUpperCase()}.`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }
@@ -754,16 +792,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Settings & Media Banners
   const updateSettings = async (updated: Partial<StoreSettings>) => {
+    const updatedSettings = { ...settings, ...updated };
+    setSettings(updatedSettings);
+    localStorage.setItem('luxebite_settings', JSON.stringify(updatedSettings));
+    localStorage.setItem('luxebite_has_custom_updates', 'true');
+    pushNotification('success', `Gilded values successfully updated.`);
+
     try {
-      const response = await fetch('/api/settings', {
+      await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-      if (response.ok) {
-        pushNotification('success', `Gilded values successfully updated.`);
-        fetchServerState();
-      }
+      fetchServerState();
     } catch (err) {
       console.error(err);
     }

@@ -1,10 +1,9 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
+import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@sanity/client";
-import dotenv from "dotenv";
 
 dotenv.config();
 
@@ -461,7 +460,25 @@ function sendBroadcastUpdate() {
 
 // Get full current live state
 app.get("/api/state", (req, res) => {
-  res.json(state);
+  res.json({
+    ...state,
+    sanityConfigured: isSanityConfigured
+  });
+});
+
+// Sync full state from client (for serverless persistence resilience)
+app.post("/api/state/sync", async (req, res) => {
+  const clientState = req.body;
+  if (clientState) {
+    if (clientState.products) state.products = clientState.products;
+    if (clientState.categories) state.categories = clientState.categories;
+    if (clientState.orders) state.orders = clientState.orders;
+    if (clientState.reservations) state.reservations = clientState.reservations;
+    if (clientState.settings) state.settings = { ...state.settings, ...clientState.settings };
+    saveState();
+    sendBroadcastUpdate();
+  }
+  res.json({ success: true, state: { ...state, sanityConfigured: isSanityConfigured } });
 });
 
 // Create Order
@@ -763,6 +780,7 @@ async function startServer() {
   }
 
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
