@@ -257,7 +257,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return preloadedUsers[1] ? preloadedUsers[1].email.toLowerCase() : 'guest';
   };
 
-  const loadedUserEmailRef = React.useRef<string | null>(getInitialUserEmail());
+  const [activeUserEmail, setActiveUserEmail] = useState<string>(() => getInitialUserEmail());
+
+  // Refs to capture the absolute latest state on intervals/callbacks to avoid stale closures
+  const ordersRef = React.useRef<Order[]>(orders);
+  const reservationsRef = React.useRef<Reservation[]>(reservations);
+  const currentUserRef = React.useRef<User | null>(currentUser);
+
+  // Synchronize refs in normal render triggers
+  React.useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
+
+  React.useEffect(() => {
+    reservationsRef.current = reservations;
+  }, [reservations]);
+
+  React.useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   // Client-only states
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -275,6 +293,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem(`luxebite_wishlist_${userKey}`);
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Dynamically resolve the cart details using the live list of products to reflect updates instant-live
+  const resolvedCart = React.useMemo(() => {
+    return cart.map(item => {
+      const liveProduct = products.find(p => p.id === item.product.id);
+      return {
+        ...item,
+        product: liveProduct ? { ...liveProduct } : item.product
+      };
+    });
+  }, [cart, products]);
 
   const [promoCodes] = useState<PromoCode[]>(defaultPromoCodes);
   const [gallery, setGallery] = useState<GalleryItem[]>(() => {
@@ -358,11 +387,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         
         if (data.orders) {
+          // Compare with current state from refs to trigger notifications for real-time updates
+          const currentOrders = ordersRef.current;
+          const activeUser = currentUserRef.current;
+          
+          if (currentOrders.length > 0 && data.orders.length > 0) {
+            data.orders.forEach((newOrd: any) => {
+              const oldOrd = currentOrders.find(o => o.id === newOrd.id);
+              if (!oldOrd) {
+                // New order placed
+                if (activeUser?.role === 'admin') {
+                  pushNotification('success', `Incoming Real-Time Order: ${newOrd.id} from ${newOrd.userName} (€${newOrd.total})!`);
+                }
+              } else if (oldOrd.status !== newOrd.status) {
+                // Order status updated
+                const isMyOrder = activeUser && activeUser.email.toLowerCase() === newOrd.userEmail.toLowerCase();
+                if (isMyOrder || activeUser?.role === 'admin') {
+                  pushNotification('info', `Order ${newOrd.id} status updated to: ${newOrd.status.toUpperCase()}`);
+                }
+              }
+            });
+          }
+
           setOrders(data.orders);
           localStorage.setItem('luxebite_orders', JSON.stringify(data.orders));
         }
 
         if (data.reservations) {
+          // Compare with current state from refs to trigger notifications for real-time updates
+          const currentReservations = reservationsRef.current;
+          const activeUser = currentUserRef.current;
+          
+          if (currentReservations.length > 0 && data.reservations.length > 0) {
+            data.reservations.forEach((newRes: any) => {
+              const oldRes = currentReservations.find(r => r.id === newRes.id);
+              if (!oldRes) {
+                // New reservation
+                if (activeUser?.role === 'admin') {
+                  pushNotification('success', `New Salon Reservation ${newRes.id} requested by ${newRes.userName} (${newRes.partySize} guests)!`);
+                }
+              } else if (oldRes.status !== newRes.status) {
+                // Reservation status updated
+                const isMyRes = activeUser && activeUser.email.toLowerCase() === newRes.userEmail.toLowerCase();
+                if (isMyRes || activeUser?.role === 'admin') {
+                  pushNotification('success', `Reservation ${newRes.id} slot set live to: ${newRes.status.toUpperCase()}`);
+                }
+              }
+            });
+          }
+
           setReservations(data.reservations);
           localStorage.setItem('luxebite_reservations', JSON.stringify(data.reservations));
         }
@@ -409,7 +482,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const userKey = currentUser ? currentUser.email.toLowerCase() : 'guest';
     
     // Safety check - if we already have this user's state active, no need to swap
-    if (loadedUserEmailRef.current === userKey) return;
+    if (activeUserEmail === userKey) return;
 
     const savedCart = localStorage.getItem(`luxebite_cart_${userKey}`);
     setCart(savedCart ? JSON.parse(savedCart) : []);
@@ -420,7 +493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const savedNotifs = localStorage.getItem(`luxebite_notifications_${userKey}`);
     setNotifications(savedNotifs ? JSON.parse(savedNotifs) : (currentUser ? [] : defaultNotifs));
 
-    loadedUserEmailRef.current = userKey;
+    setActiveUserEmail(userKey);
   }, [currentUser]);
 
   // Sync client-side states to localStorage
@@ -433,29 +506,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [users]);
 
   useEffect(() => {
-    const userKey = currentUser ? currentUser.email.toLowerCase() : 'guest';
-    if (loadedUserEmailRef.current === userKey) {
-      localStorage.setItem(`luxebite_cart_${userKey}`, JSON.stringify(cart));
-    }
-  }, [cart, currentUser]);
+    localStorage.setItem(`luxebite_cart_${activeUserEmail}`, JSON.stringify(cart));
+  }, [cart, activeUserEmail]);
 
   useEffect(() => {
-    const userKey = currentUser ? currentUser.email.toLowerCase() : 'guest';
-    if (loadedUserEmailRef.current === userKey) {
-      localStorage.setItem(`luxebite_wishlist_${userKey}`, JSON.stringify(wishlist));
-    }
-  }, [wishlist, currentUser]);
+    localStorage.setItem(`luxebite_wishlist_${activeUserEmail}`, JSON.stringify(wishlist));
+  }, [wishlist, activeUserEmail]);
 
   useEffect(() => {
     localStorage.setItem('luxebite_gallery', JSON.stringify(gallery));
   }, [gallery]);
 
   useEffect(() => {
-    const userKey = currentUser ? currentUser.email.toLowerCase() : 'guest';
-    if (loadedUserEmailRef.current === userKey) {
-      localStorage.setItem(`luxebite_notifications_${userKey}`, JSON.stringify(notifications));
-    }
-  }, [notifications, currentUser]);
+    localStorage.setItem(`luxebite_notifications_${activeUserEmail}`, JSON.stringify(notifications));
+  }, [notifications, activeUserEmail]);
 
   // Authenticate System
   const login = (email: string, role: 'admin' | 'customer', password?: string): boolean => {
@@ -928,7 +992,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   return (
     <AppContext.Provider value={{
-      currentUser, users, products, categories, cart, wishlist, orders, reservations, promoCodes, gallery, settings, notifications, activeToasts, isLightTheme,
+      currentUser, users, products, categories, cart: resolvedCart, wishlist, orders, reservations, promoCodes, gallery, settings, notifications, activeToasts, isLightTheme,
       login, logout, registerCustomer, toggleTheme,
       addProduct, updateProduct, deleteProduct,
       addCategory, deleteCategory,
