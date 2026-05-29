@@ -198,8 +198,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Try loading states from LocalStorage or fallback
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('luxebite_session');
-    if (saved) return JSON.parse(saved);
-    return preloadedUsers[1]; // Logged in as Charlotte DuPont customer by default
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed) return parsed;
+      } catch (err) {
+        console.error("Failed to parse saved session:", err);
+      }
+    }
+    return null; // Guest / not logged in by default on landing
   });
 
   const [users, setUsers] = useState<User[]>(() => {
@@ -254,7 +261,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.error("Failed to parse initial session:", err);
       }
     }
-    return preloadedUsers[1] ? preloadedUsers[1].email.toLowerCase() : 'guest';
+    return 'guest';
   };
 
   const [activeUserEmail, setActiveUserEmail] = useState<string>(() => getInitialUserEmail());
@@ -280,7 +287,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Client-only states
   const [cart, setCart] = useState<CartItem[]>(() => {
     const initialUserStr = localStorage.getItem('luxebite_session');
-    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : preloadedUsers[1];
+    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : null;
     const userKey = initialUser ? initialUser.email.toLowerCase() : 'guest';
     const saved = localStorage.getItem(`luxebite_cart_${userKey}`);
     return saved ? JSON.parse(saved) : [];
@@ -288,7 +295,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [wishlist, setWishlist] = useState<string[]>(() => {
     const initialUserStr = localStorage.getItem('luxebite_session');
-    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : preloadedUsers[1];
+    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : null;
     const userKey = initialUser ? initialUser.email.toLowerCase() : 'guest';
     const saved = localStorage.getItem(`luxebite_wishlist_${userKey}`);
     return saved ? JSON.parse(saved) : [];
@@ -313,7 +320,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [notifications, setNotifications] = useState<SystemNotif[]>(() => {
     const initialUserStr = localStorage.getItem('luxebite_session');
-    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : preloadedUsers[1];
+    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : null;
     const userKey = initialUser ? initialUser.email.toLowerCase() : 'guest';
     const saved = localStorage.getItem(`luxebite_notifications_${userKey}`);
     return saved ? JSON.parse(saved) : (initialUser ? [] : defaultNotifs);
@@ -346,7 +353,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const localReservationsStr = localStorage.getItem('luxebite_reservations');
           const localSettingsStr = localStorage.getItem('luxebite_settings');
 
-          if (hasCustomEdits) {
+          // ONLY the admin is permitted to push state sync payloads to the server memory/disk.
+          // This keeps standard clients and guests from accidentally sanitizing/resetting products and categories.
+          const isAdmin = currentUserRef.current?.role === 'admin';
+
+          if (hasCustomEdits && isAdmin) {
             const localProducts = localProductsStr ? JSON.parse(localProductsStr) : [];
             const localCategories = localCategoriesStr ? JSON.parse(localCategoriesStr) : [];
             const localOrders = localOrdersStr ? JSON.parse(localOrdersStr) : [];
