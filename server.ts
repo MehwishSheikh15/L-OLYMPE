@@ -459,7 +459,14 @@ function sendBroadcastUpdate() {
 // REST API Endpoints
 
 // Get full current live state
-app.get("/api/state", (req, res) => {
+app.get("/api/state", async (req, res) => {
+  if (isSanityConfigured) {
+    try {
+      await loadState();
+    } catch (err) {
+      console.error("Failed to load fresh state from Sanity on state request:", err);
+    }
+  }
   res.json({
     ...state,
     sanityConfigured: isSanityConfigured

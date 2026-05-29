@@ -241,14 +241,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
+  // Tracks which user's local states are currently actively loaded in state
+  const getInitialUserEmail = () => {
+    const initialUserStr = localStorage.getItem('luxebite_session');
+    if (initialUserStr) {
+      try {
+        const initialUser = JSON.parse(initialUserStr);
+        if (initialUser && initialUser.email) {
+          return initialUser.email.toLowerCase();
+        }
+      } catch (err) {
+        console.error("Failed to parse initial session:", err);
+      }
+    }
+    return preloadedUsers[1] ? preloadedUsers[1].email.toLowerCase() : 'guest';
+  };
+
+  const loadedUserEmailRef = React.useRef<string | null>(getInitialUserEmail());
+
   // Client-only states
   const [cart, setCart] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem('luxebite_cart');
+    const initialUserStr = localStorage.getItem('luxebite_session');
+    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : preloadedUsers[1];
+    const userKey = initialUser ? initialUser.email.toLowerCase() : 'guest';
+    const saved = localStorage.getItem(`luxebite_cart_${userKey}`);
     return saved ? JSON.parse(saved) : [];
   });
 
   const [wishlist, setWishlist] = useState<string[]>(() => {
-    const saved = localStorage.getItem('luxebite_wishlist');
+    const initialUserStr = localStorage.getItem('luxebite_session');
+    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : preloadedUsers[1];
+    const userKey = initialUser ? initialUser.email.toLowerCase() : 'guest';
+    const saved = localStorage.getItem(`luxebite_wishlist_${userKey}`);
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -259,8 +283,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [notifications, setNotifications] = useState<SystemNotif[]>(() => {
-    const saved = localStorage.getItem('luxebite_notifications');
-    return saved ? JSON.parse(saved) : defaultNotifs;
+    const initialUserStr = localStorage.getItem('luxebite_session');
+    const initialUser = initialUserStr ? JSON.parse(initialUserStr) : preloadedUsers[1];
+    const userKey = initialUser ? initialUser.email.toLowerCase() : 'guest';
+    const saved = localStorage.getItem(`luxebite_notifications_${userKey}`);
+    return saved ? JSON.parse(saved) : (initialUser ? [] : defaultNotifs);
   });
 
   const [activeToasts, setActiveToasts] = useState<VisualToast[]>([]);
@@ -377,6 +404,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLightTheme(prev => !prev);
   };
 
+  // Load user-specific states dynamically when currentUser is updated
+  useEffect(() => {
+    const userKey = currentUser ? currentUser.email.toLowerCase() : 'guest';
+    
+    // Safety check - if we already have this user's state active, no need to swap
+    if (loadedUserEmailRef.current === userKey) return;
+
+    const savedCart = localStorage.getItem(`luxebite_cart_${userKey}`);
+    setCart(savedCart ? JSON.parse(savedCart) : []);
+
+    const savedWishlist = localStorage.getItem(`luxebite_wishlist_${userKey}`);
+    setWishlist(savedWishlist ? JSON.parse(savedWishlist) : []);
+
+    const savedNotifs = localStorage.getItem(`luxebite_notifications_${userKey}`);
+    setNotifications(savedNotifs ? JSON.parse(savedNotifs) : (currentUser ? [] : defaultNotifs));
+
+    loadedUserEmailRef.current = userKey;
+  }, [currentUser]);
+
   // Sync client-side states to localStorage
   useEffect(() => {
     localStorage.setItem('luxebite_session', JSON.stringify(currentUser));
@@ -387,20 +433,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('luxebite_cart', JSON.stringify(cart));
-  }, [cart]);
+    const userKey = currentUser ? currentUser.email.toLowerCase() : 'guest';
+    if (loadedUserEmailRef.current === userKey) {
+      localStorage.setItem(`luxebite_cart_${userKey}`, JSON.stringify(cart));
+    }
+  }, [cart, currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('luxebite_wishlist', JSON.stringify(wishlist));
-  }, [wishlist]);
+    const userKey = currentUser ? currentUser.email.toLowerCase() : 'guest';
+    if (loadedUserEmailRef.current === userKey) {
+      localStorage.setItem(`luxebite_wishlist_${userKey}`, JSON.stringify(wishlist));
+    }
+  }, [wishlist, currentUser]);
 
   useEffect(() => {
     localStorage.setItem('luxebite_gallery', JSON.stringify(gallery));
   }, [gallery]);
 
   useEffect(() => {
-    localStorage.setItem('luxebite_notifications', JSON.stringify(notifications));
-  }, [notifications]);
+    const userKey = currentUser ? currentUser.email.toLowerCase() : 'guest';
+    if (loadedUserEmailRef.current === userKey) {
+      localStorage.setItem(`luxebite_notifications_${userKey}`, JSON.stringify(notifications));
+    }
+  }, [notifications, currentUser]);
 
   // Authenticate System
   const login = (email: string, role: 'admin' | 'customer', password?: string): boolean => {
