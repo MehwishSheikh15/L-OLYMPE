@@ -138,7 +138,7 @@ const defaultProducts: Product[] = [
     description: "Wild Brittany lobster caught off the pristine French coastline, poached in fine Chablis wine, combined with sliced porcini mushrooms and coated in a lavish Gruyère brandy crust.",
     price: 185,
     categoryId: "cat-3",
-    image: "https://images.unsplash.com/photo-1534080391025-a77c7ec4403e?auto=format&fit=crop&w=800&q=80",
+    image: "https://i.redd.it/xyucyid6fdka1.jpg",
     status: "available",
     rating: 4.8,
     ratingCount: 31,
