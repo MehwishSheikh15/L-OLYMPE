@@ -120,3 +120,10 @@ export interface SystemNotif {
   timestamp: string;
   read: boolean;
 }
+
+export interface VisualToast {
+  id: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  message: string;
+}
+

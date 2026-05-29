@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
   User, Product, Category, CartItem, PromoCode, Order, 
-  Reservation, GalleryItem, StoreSettings, SystemNotif 
+  Reservation, GalleryItem, StoreSettings, SystemNotif, VisualToast 
 } from '../types';
 
 interface AppContextType {
@@ -17,6 +17,7 @@ interface AppContextType {
   gallery: GalleryItem[];
   settings: StoreSettings;
   notifications: SystemNotif[];
+  activeToasts: VisualToast[];
   isLightTheme: boolean;
   
   // Auth Functions
@@ -56,6 +57,7 @@ interface AppContextType {
   
   // System Alert Hooks
   pushNotification: (type: SystemNotif['type'], message: string) => void;
+  dismissToast: (id: string) => void;
   markNotificationsAsRead: () => void;
   clearNotifications: () => void;
   fetchServerState: () => Promise<void>;
@@ -260,6 +262,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem('luxebite_notifications');
     return saved ? JSON.parse(saved) : defaultNotifs;
   });
+
+  const [activeToasts, setActiveToasts] = useState<VisualToast[]>([]);
 
   const [activePromoCode, setActivePromoCode] = useState<PromoCode | null>(null);
 
@@ -611,7 +615,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const removeFromCart = (productId: string) => {
+    const item = cart.find(i => i.product.id === productId);
     setCart(prev => prev.filter(item => item.product.id !== productId));
+    if (item) {
+      pushNotification('info', `Removed from collection: ${item.product.name}`);
+    }
   };
 
   const updateCartQuantity = (productId: string, quantity: number) => {
@@ -827,14 +835,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Notification utilities
   const pushNotification = (type: SystemNotif['type'], message: string) => {
+    const id = 'not-' + Date.now();
     const newNotif: SystemNotif = {
-      id: 'not-' + Date.now(),
+      id,
       type,
       message,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       read: false
     };
     setNotifications(prev => [newNotif, ...prev].slice(0, 20));
+
+    // Also push a live dynamic visual toast
+    const newToast: VisualToast = {
+      id,
+      type,
+      message
+    };
+    setActiveToasts(prev => [...prev, newToast]);
+
+    // Fast auto-dismiss in 4 seconds to maintain tidy interface screens
+    setTimeout(() => {
+      dismissToast(id);
+    }, 4000);
+  };
+
+  const dismissToast = (id: string) => {
+    setActiveToasts(prev => prev.filter(t => t.id !== id));
   };
 
   const markNotificationsAsRead = () => {
@@ -847,14 +873,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   return (
     <AppContext.Provider value={{
-      currentUser, users, products, categories, cart, wishlist, orders, reservations, promoCodes, gallery, settings, notifications, isLightTheme,
+      currentUser, users, products, categories, cart, wishlist, orders, reservations, promoCodes, gallery, settings, notifications, activeToasts, isLightTheme,
       login, logout, registerCustomer, toggleTheme,
       addProduct, updateProduct, deleteProduct,
       addCategory, deleteCategory,
       addToCart, removeFromCart, updateCartQuantity, clearCart, toggleWishlist, applyPromoCode, activePromoCode, placeOrder, updateOrderStatus,
       bookTable, updateReservationStatus,
       updateSettings, addGalleryItem, deleteGalleryItem,
-      pushNotification, markNotificationsAsRead, clearNotifications,
+      pushNotification, dismissToast, markNotificationsAsRead, clearNotifications,
       fetchServerState
     }}>
       {children}

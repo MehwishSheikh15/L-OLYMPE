@@ -9,10 +9,12 @@ import { GallerySection } from './components/GallerySection';
 import { ContactSection } from './components/ContactSection';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
+import { WishlistDrawer } from './components/WishlistDrawer';
 import { ReservationsModal } from './components/ReservationsModal';
 import { AuthModal } from './components/AuthModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AIChatConcierge } from './components/AIChatConcierge';
+import { FloatingToasts } from './components/FloatingToasts';
 import { Sparkles, Terminal, ShieldAlert } from 'lucide-react';
 
 function AppContent() {
@@ -113,6 +115,13 @@ function AppContent() {
         onClose={() => setAuthModalOpen(false)} 
         defaultTab={authModalTab}
       />
+
+      <WishlistDrawer 
+        isOpen={wishlistOpen} 
+        onClose={() => setWishlistOpen(false)} 
+      />
+
+      <FloatingToasts />
 
       {/* Floating AI Guest Butler Chat agent widget */}
       <AIChatConcierge />
